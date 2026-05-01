@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Kryton",
   "version": "4.4.0-pre.1",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.azrtydxb.kryton",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
