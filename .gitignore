@@ -29,3 +29,9 @@ npm-debug.log*
 .env
 .env.local
 .env.*.local
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Vite stub modules
+node_modules/.vite-stubs/
