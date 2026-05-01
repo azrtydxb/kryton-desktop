@@ -2,6 +2,30 @@
 
 Kryton desktop application built with Tauri v2 + React.
 
+## Install
+
+Download the latest installer from the [Releases page](https://github.com/azrtydxb/kryton-desktop/releases/latest):
+
+| Platform | File to download |
+|---|---|
+| macOS (Apple Silicon + Intel) | `Kryton_x.y.z_universal.dmg` |
+| Windows | `Kryton_x.y.z_x64-setup.exe` or `Kryton_x.y.z_x64_en-US.msi` |
+
+### macOS
+
+1. Download the `.dmg` file.
+2. Open the DMG and drag **Kryton.app** into your Applications folder.
+3. On first launch, macOS may show a security dialog — open **System Settings → Privacy & Security** and click **Open Anyway**.
+4. Subsequent updates are delivered automatically in-app.
+
+### Windows
+
+1. Download the `.exe` (NSIS installer) or `.msi` (Windows Installer).
+2. Run the installer and follow the prompts.
+3. Subsequent updates are delivered automatically in-app.
+
+> **Note:** Builds are code-signed and notarized. If your browser warns about the download, you can verify the SHA-256 checksum against the values published on the release page.
+
 ## Development
 
 ```sh

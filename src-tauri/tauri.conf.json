@@ -36,7 +36,10 @@
       }
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZFRUM2NEU2QTI3NzRFM0YKUldRL1RuZWk1bVRzYmlNczhWOXZHU0xETWRqNlNIekNRTXpLUFhLbVlEeURhQUtBTDQrUTY1N0MK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZFRUM2NEU2QTI3NzRFM0YKUldRL1RuZWk1bVRzYmlNczhWOXZHU0xETWRqNlNIekNRTXpLUFhLbVlEeURhQUtBTDQrUTY1N0MK",
+      "endpoints": [
+        "https://github.com/azrtydxb/kryton-desktop/releases/latest/download/latest.json"
+      ]
     }
   }
 }
