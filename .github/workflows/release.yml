@@ -58,6 +58,9 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    # Skip until Windows EV cert is procured. Enable by setting repo variable
+    # ENABLE_WINDOWS_BUILD=true plus WINDOWS_CERT_BASE64 + WINDOWS_CERT_PASSWORD secrets.
+    if: ${{ vars.ENABLE_WINDOWS_BUILD == 'true' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -118,6 +121,8 @@ jobs:
 
   release:
     needs: [build-mac, build-windows]
+    # Run when build-mac succeeded; build-windows may have been skipped (no Windows cert yet).
+    if: ${{ always() && needs.build-mac.result == 'success' && (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -136,6 +141,7 @@ jobs:
           path: artifacts/macos
 
       - name: download Windows artifacts
+        if: ${{ needs.build-windows.result == 'success' }}
         uses: actions/download-artifact@v4
         with:
           name: windows-artifacts
