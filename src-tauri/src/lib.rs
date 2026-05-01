@@ -1,4 +1,5 @@
 mod account_store;
+mod auth_storage;
 mod db_io;
 mod window_manager;
 
@@ -30,6 +31,9 @@ pub fn run() {
             account_store::touch_account,
             window_manager::open_account_window,
             window_manager::open_launcher_window,
+            auth_storage::get_auth_token,
+            auth_storage::set_auth_token,
+            auth_storage::clear_auth_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
