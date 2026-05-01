@@ -33,18 +33,69 @@ function uuid(): string {
 export class CoreAdapter implements KrytonDataAdapter {
   /**
    * @param core         - Initialised Kryton instance.
-   * @param userId       - The authenticated user's id.
-   * @param userEmail    - Optional email for currentUser placeholder.
    * @param serverUrl    - Base URL of the Kryton server (for agent API calls).
    * @param authTokenFn  - Returns the current bearer token (for agent API calls).
    */
+
+  /** Cached user fetched from /api/auth/get-session. */
+  private _currentUser: CurrentUser | null = null;
+
+  /** Listeners registered for network online/offline events. */
+  private _onlineHandler: (() => void) | null = null;
+  private _offlineHandler: (() => void) | null = null;
+
   constructor(
     private readonly core: Kryton,
-    private readonly userId: string,
-    private readonly userEmail: string = "",
     private readonly serverUrl: string = "",
     private readonly authTokenFn: () => string | null | Promise<string | null> = () => null,
-  ) {}
+  ) {
+    // Concern 2: set up online/offline listeners so sync subscribers re-render
+    // on connectivity change.
+    if (typeof window !== "undefined") {
+      this._onlineHandler = () => this._fireSyncCallbacks();
+      this._offlineHandler = () => this._fireSyncCallbacks();
+      window.addEventListener("online", this._onlineHandler);
+      window.addEventListener("offline", this._offlineHandler);
+    }
+  }
+
+  /** Fire all "sync" subscribers so consumers re-render on network change. */
+  private _fireSyncCallbacks(): void {
+    // Emit a synthetic "change" event on the bus with entityType "sync"
+    // so any useUiSyncStatus() subscriber re-renders.
+    try {
+      this.core.bus.emit("change", { entityType: "sync", source: "network" });
+    } catch {
+      // best-effort
+    }
+  }
+
+  /**
+   * Fetch the current authenticated user from the server and cache it.
+   * Must be called after adapter construction and before rendering.
+   */
+  async fetchCurrentUser(): Promise<void> {
+    try {
+      const tok = await this.resolveToken();
+      const res = await fetch(`${this.serverUrl}/api/auth/get-session`, {
+        headers: this.authHeader(tok),
+      });
+      if (!res.ok) {
+        console.warn(`[CoreAdapter] fetchCurrentUser: ${res.status}`);
+        return;
+      }
+      const body = await res.json() as { session?: unknown; user?: { id: string; email?: string; name?: string } };
+      if (body.user?.id) {
+        this._currentUser = {
+          id: body.user.id,
+          email: body.user.email ?? "",
+          displayName: body.user.name ?? body.user.email?.split("@")[0] ?? body.user.id,
+        };
+      }
+    } catch (err) {
+      console.warn("[CoreAdapter] fetchCurrentUser failed:", err);
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // notes
@@ -134,7 +185,7 @@ export class CoreAdapter implements KrytonDataAdapter {
       const id = uuid();
       const row = this.core.folders.create({
         id,
-        userId: this.userId,
+        userId: this._currentUser?.id ?? "",
         path: input.path,
         parentId: input.parentId,
         updatedAt: Date.now(),
@@ -165,12 +216,12 @@ export class CoreAdapter implements KrytonDataAdapter {
 
   settings: KrytonDataAdapter["settings"] = {
     get: (key: string): string | null => {
-      const row = this.core.settings.get(this.userId, key);
+      const row = this.core.settings.get(this._currentUser?.id ?? "", key);
       return row?.value ?? null;
     },
 
     set: async (key: string, value: string): Promise<void> => {
-      this.core.settings.set(this.userId, key, value);
+      this.core.settings.set(this._currentUser?.id ?? "", key, value);
     },
   };
 
@@ -194,29 +245,66 @@ export class CoreAdapter implements KrytonDataAdapter {
     },
 
     restore: async (id: string): Promise<void> => {
-      // Restore: look up the trashItem, re-create the note at its original path,
-      // then delete the trash_item row.
+      // Look up the local trash item to get its originalPath for the server call.
       const item = this.core.trashItems.findById(id);
       if (!item) return;
-      // Re-create the note at the original path using the base title (filename)
-      const title = item.originalPath.split("/").pop() ?? item.originalPath;
-      const noteId = uuid();
-      this.core.notes.create({
-        id: noteId,
-        path: item.originalPath,
-        title,
-        tags: "[]",
-        modifiedAt: Date.now(),
-        version: 0,
+
+      const tok = await this.resolveToken();
+      const encodedPath = encodeURIComponent(item.originalPath);
+      const res = await fetch(
+        `${this.serverUrl}/api/trash/restore/${encodedPath}`,
+        {
+          method: "POST",
+          headers: this.authHeader(tok),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(`trashItems.restore: ${res.status}`);
+      }
+
+      // Pull restored note into local state and remove the trash row.
+      await this.core.sync.full().catch((err: unknown) => {
+        console.warn("[CoreAdapter] post-restore sync failed:", err);
       });
       this.core.trashItems.delete(id);
     },
 
     purge: async (id: string): Promise<void> => {
+      // Look up the local trash item to get its originalPath for the server call.
+      const item = this.core.trashItems.findById(id);
+      if (!item) {
+        // Fallback: just remove locally.
+        this.core.trashItems.delete(id);
+        return;
+      }
+
+      const tok = await this.resolveToken();
+      const encodedPath = encodeURIComponent(item.originalPath);
+      const res = await fetch(
+        `${this.serverUrl}/api/trash/${encodedPath}`,
+        {
+          method: "DELETE",
+          headers: this.authHeader(tok),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(`trashItems.purge: ${res.status}`);
+      }
+
       this.core.trashItems.delete(id);
     },
 
     purgeAll: async (): Promise<void> => {
+      const tok = await this.resolveToken();
+      const res = await fetch(`${this.serverUrl}/api/trash-empty`, {
+        method: "DELETE",
+        headers: this.authHeader(tok),
+      });
+      if (!res.ok) {
+        throw new Error(`trashItems.purgeAll: ${res.status}`);
+      }
+
+      // Remove all local trash rows.
       const items = this.core.trashItems.list();
       for (const item of items) {
         this.core.trashItems.delete(item.id);
@@ -284,8 +372,8 @@ export class CoreAdapter implements KrytonDataAdapter {
       lastPullAt: lastPullAtRaw ? Number(lastPullAtRaw) : null,
       lastPushAt: lastPushAtRaw ? Number(lastPushAtRaw) : null,
       pending: Number(pendingRaw) || 0,
-      // Treat as online if we've received at least one pull response.
-      online: !!lastPullAtRaw,
+      // Use navigator.onLine which is reliable in Tauri's Chromium WebView.
+      online: typeof navigator !== "undefined" ? navigator.onLine : true,
     };
   }
 
@@ -302,12 +390,7 @@ export class CoreAdapter implements KrytonDataAdapter {
   // ---------------------------------------------------------------------------
 
   currentUser(): CurrentUser | null {
-    if (!this.userId) return null;
-    return {
-      id: this.userId,
-      email: this.userEmail,
-      displayName: this.userEmail.split("@")[0] || this.userId,
-    };
+    return this._currentUser;
   }
 
   // ---------------------------------------------------------------------------

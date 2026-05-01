@@ -222,24 +222,16 @@ export function AccountWindow({ accountId }: { accountId: string }) {
         }
         coreInstance = core;
 
-        // 4. Derive userId from available rows (may be empty on a fresh DB).
-        let userId = "";
-        const firstFolder = core.folders.list()[0];
-        if (firstFolder?.userId) {
-          userId = firstFolder.userId;
-        } else {
-          const firstTag = core.tags.list()[0];
-          if (firstTag?.userId) userId = firstTag.userId;
-        }
-
-        // 5. Build the adapter (DCC-C2: pass serverUrl + authTokenFn for agent API).
+        // 4. Build the adapter (DCC-C2: pass serverUrl + authTokenFn for agent API).
         const adapter = new CoreAdapter(
           core,
-          userId,
-          /* userEmail */ "",
           account.server_url,
           () => authStorage.getToken(accountId),
         );
+
+        // 5. Fetch the current authenticated user from the server and cache it.
+        await adapter.fetchCurrentUser();
+
         adapterRef.current = adapter;
 
         setState({ status: "ready", adapter, accountLabel: account.label, serverUrl: account.server_url });
