@@ -17,6 +17,7 @@ import { initDesktopCore } from "./core/desktop-init";
 import { authStorage } from "./auth/auth-storage";
 import { CoreAdapter } from "./core/CoreAdapter";
 import { pickMarkdownFile } from "./tauri/file-dialogs";
+import { setupDropHandler } from "./tauri/drop-handler";
 import type { Kryton } from "@azrtydxb/core";
 
 // ---------------------------------------------------------------------------
@@ -32,7 +33,7 @@ interface Account {
 
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; adapter: CoreAdapter; accountLabel: string }
+  | { status: "ready"; adapter: CoreAdapter; accountLabel: string; serverUrl: string }
   | { status: "error"; message: string };
 
 // ---------------------------------------------------------------------------
@@ -91,7 +92,7 @@ export function AccountWindow({ accountId }: { accountId: string }) {
         const adapter = new CoreAdapter(core, userId);
         adapterRef.current = adapter;
 
-        setState({ status: "ready", adapter, accountLabel: account.label });
+        setState({ status: "ready", adapter, accountLabel: account.label, serverUrl: account.server_url });
       } catch (err) {
         if (cancelled) return;
         const message =
@@ -110,6 +111,52 @@ export function AccountWindow({ accountId }: { accountId: string }) {
       });
     };
   }, [accountId]);
+
+  // ---------------------------------------------------------------------------
+  // Global hotkey — open-quick-switcher (DCC-A2)
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<void>("open-quick-switcher", () => {
+      // TODO: wire to command palette / quick-switcher UI state in a later phase.
+      console.info("[AccountWindow] open-quick-switcher received");
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch((err: unknown) => {
+        console.warn("[AccountWindow] failed to subscribe to open-quick-switcher:", err);
+      });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Drag-drop file import (DCC-A4)
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    let cleanup: (() => void) | undefined;
+
+    setupDropHandler({
+      serverUrl: state.serverUrl,
+      authToken: () => authStorage.getToken(accountId),
+    })
+      .then((unlisten) => {
+        cleanup = unlisten;
+      })
+      .catch((err: unknown) => {
+        console.warn("[AccountWindow] setupDropHandler failed:", err);
+      });
+
+    return () => {
+      cleanup?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.status, accountId]);
 
   // ---------------------------------------------------------------------------
   // Menu-action listener (DC-E1 / DC-E2)
