@@ -28,5 +28,12 @@
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["kryton"]
+      }
+    }
   }
 }
