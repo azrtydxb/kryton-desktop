@@ -7,14 +7,16 @@
  *   3. Wrap the UI layer in KrytonDataProvider using a CoreAdapter.
  *   4. Render AppShell from @azrtydxb/ui as the top-level shell.
  *   5. Touch the account on mount (updates last_logged_in_at).
- *   6. (Placeholder) Listen for Tauri menu-action events.
+ *   6. Listen for Tauri menu-action events and route them.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { AppShell, KrytonDataProvider } from "@azrtydxb/ui";
 import { initDesktopCore } from "./core/desktop-init";
 import { authStorage } from "./auth/auth-storage";
 import { CoreAdapter } from "./core/CoreAdapter";
+import { pickMarkdownFile } from "./tauri/file-dialogs";
 import type { Kryton } from "@azrtydxb/core";
 
 // ---------------------------------------------------------------------------
@@ -39,6 +41,9 @@ type LoadState =
 
 export function AccountWindow({ accountId }: { accountId: string }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  // Keep a stable ref so the menu-action handler can access the latest adapter
+  // without re-subscribing every render.
+  const adapterRef = useRef<CoreAdapter | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +89,7 @@ export function AccountWindow({ accountId }: { accountId: string }) {
 
         // 5. Build the adapter.
         const adapter = new CoreAdapter(core, userId);
+        adapterRef.current = adapter;
 
         setState({ status: "ready", adapter, accountLabel: account.label });
       } catch (err) {
@@ -96,15 +102,39 @@ export function AccountWindow({ accountId }: { accountId: string }) {
 
     void init();
 
-    // TODO (DC-D2+): wire Tauri menu-action events via listen("menu-action", handler).
-
     return () => {
       cancelled = true;
+      adapterRef.current = null;
       coreInstance?.close().catch((err: unknown) => {
         console.warn("[AccountWindow] core.close() failed:", err);
       });
     };
   }, [accountId]);
+
+  // ---------------------------------------------------------------------------
+  // Menu-action listener (DC-E1 / DC-E2)
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen<string>("menu-action", (event) => {
+      const action = event.payload;
+      handleMenuAction(action, adapterRef.current).catch((err: unknown) => {
+        console.warn("[AccountWindow] menu-action handler error:", err);
+      });
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch((err: unknown) => {
+        console.warn("[AccountWindow] failed to subscribe to menu-action:", err);
+      });
+
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -146,3 +176,89 @@ export function AccountWindow({ accountId }: { accountId: string }) {
     </KrytonDataProvider>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Menu action router
+// ---------------------------------------------------------------------------
+
+/**
+ * Route a `menu-action` event payload to the appropriate handler.
+ * The adapter may be null if the window hasn't finished initialising yet.
+ */
+async function handleMenuAction(
+  action: string,
+  adapter: CoreAdapter | null,
+): Promise<void> {
+  console.info("[AccountWindow] menu-action:", action);
+
+  switch (action) {
+    case "new-note": {
+      if (!adapter) {
+        console.warn("[AccountWindow] new-note: adapter not ready");
+        return;
+      }
+      // Create a new untitled note via the public adapter API.
+      await adapter.notes.create({
+        path: `/Untitled-${Date.now()}.md`,
+        title: "Untitled",
+        content: "",
+      });
+      break;
+    }
+
+    case "open": {
+      // Open a Markdown file from disk and import it as a new note.
+      const file = await pickMarkdownFile();
+      if (!file) return; // user cancelled
+
+      if (!adapter) {
+        console.warn("[AccountWindow] open: adapter not ready — file picked but cannot import");
+        return;
+      }
+      // Derive title from the filename (strip path and extension).
+      const filename = file.path.split("/").pop() ?? "imported.md";
+      const title = filename.replace(/\.(md|markdown)$/i, "");
+      const path = `/${filename}`;
+      await adapter.notes.create({ path, title, content: file.content });
+      break;
+    }
+
+    case "find":
+      // Handled by the editor component directly (browser find or custom).
+      break;
+
+    case "toggle-sidebar":
+    case "toggle-graph":
+    case "toggle-edit-preview":
+    case "show-daily":
+      // View actions — will be wired to UI state in later phases.
+      console.info("[AccountWindow] view action (not yet wired):", action);
+      break;
+
+    case "switch-account":
+      // Open the launcher so the user can pick another account.
+      invoke("open_launcher_window").catch((err: unknown) => {
+        console.warn("[AccountWindow] open_launcher_window failed:", err);
+      });
+      break;
+
+    case "docs":
+      // Open documentation in the default browser.
+      window.open("https://docs.kryton.app", "_blank");
+      break;
+
+    case "show-logs":
+      // Logs are accessible via the Tauri developer console in dev mode.
+      console.info("[AccountWindow] show-logs triggered");
+      break;
+
+    case "report-issue":
+      window.open("https://github.com/azrtydxb/kryton-desktop/issues/new", "_blank");
+      break;
+
+    default:
+      // Predefined menu items (cut, copy, paste, etc.) are handled natively.
+      break;
+  }
+}
+

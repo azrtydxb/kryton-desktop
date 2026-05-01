@@ -1,12 +1,15 @@
 mod account_store;
 mod auth_storage;
 mod db_io;
+mod menu;
 mod window_manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -15,11 +18,19 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Build and set the native menu bar.
+            let app_menu = menu::build_menu(app.handle())?;
+            app.set_menu(app_menu)?;
+
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let _ = window_manager::open_launcher_window(handle).await;
             });
             Ok(())
+        })
+        .on_menu_event(|app, event| {
+            menu::emit_menu_action(app, event.id().as_ref());
         })
         .invoke_handler(tauri::generate_handler![
             db_io::read_db,
