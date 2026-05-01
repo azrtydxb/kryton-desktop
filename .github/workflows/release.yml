@@ -49,14 +49,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: npm run tauri build
 
+      - name: stage macOS artifacts (flat)
+        run: |
+          mkdir -p staging/macos
+          cp src-tauri/target/release/bundle/dmg/*.dmg staging/macos/ 2>/dev/null || true
+          cp src-tauri/target/release/bundle/macos/*.app.tar.gz staging/macos/ 2>/dev/null || true
+          cp src-tauri/target/release/bundle/macos/*.app.tar.gz.sig staging/macos/ 2>/dev/null || true
+          ls -la staging/macos/
+
       - name: upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-artifacts
-          path: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
+          path: staging/macos/*
 
   build-windows:
     runs-on: windows-latest
@@ -111,17 +116,23 @@ jobs:
             "$($msi.FullName)"
         shell: pwsh
 
+      - name: stage Windows artifacts (flat)
+        run: |
+          New-Item -ItemType Directory -Force -Path staging/windows | Out-Null
+          Copy-Item src-tauri/target/release/bundle/msi/*.msi staging/windows/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/release/bundle/msi/*.msi.zip staging/windows/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/release/bundle/msi/*.msi.zip.sig staging/windows/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/release/bundle/nsis/*.exe staging/windows/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/release/bundle/nsis/*.nsis.zip staging/windows/ -ErrorAction SilentlyContinue
+          Copy-Item src-tauri/target/release/bundle/nsis/*.nsis.zip.sig staging/windows/ -ErrorAction SilentlyContinue
+          Get-ChildItem staging/windows
+        shell: pwsh
+
       - name: upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
-          path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.zip
-            src-tauri/target/release/bundle/msi/*.msi.zip.sig
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/nsis/*.nsis.zip
-            src-tauri/target/release/bundle/nsis/*.nsis.zip.sig
+          path: staging/windows/*
 
   release:
     needs: [build-mac, build-windows]
