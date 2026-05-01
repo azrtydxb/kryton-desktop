@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import "./globals.css";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Kryton } from "@azrtydxb/core";
 import { LauncherApp } from "./LauncherApp";
