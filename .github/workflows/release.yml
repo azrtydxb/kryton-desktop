@@ -20,7 +20,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: configure npm auth for github packages
-        run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_READ_TOKEN }}" >> ~/.npmrc
+        run: |
+          echo "@azrtydxb:registry=https://npm.pkg.github.com" >> ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_READ_TOKEN }}" >> ~/.npmrc
 
       - name: install dependencies
         run: npm ci
@@ -77,7 +79,9 @@ jobs:
 
       - name: configure npm auth for github packages
         shell: bash
-        run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_READ_TOKEN }}" >> ~/.npmrc
+        run: |
+          echo "@azrtydxb:registry=https://npm.pkg.github.com" >> ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_READ_TOKEN }}" >> ~/.npmrc
 
       - name: install dependencies
         run: npm ci
