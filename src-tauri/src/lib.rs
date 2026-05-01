@@ -142,6 +142,17 @@ async fn update_jumplist(
     Ok(())
 }
 
+// --- App data directory ---
+
+#[tauri::command]
+async fn get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    app.path()
+        .app_data_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -203,6 +214,8 @@ pub fn run() {
             win_search_upsert_note,
             win_search_remove_note,
             update_jumplist,
+            // Phase D: app data dir for settings panels
+            get_app_data_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
