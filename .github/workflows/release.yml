@@ -19,6 +19,9 @@ jobs:
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: configure npm auth for github packages
+        run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_READ_TOKEN }}" >> ~/.npmrc
+
       - name: install dependencies
         run: npm ci
 
@@ -71,6 +74,10 @@ jobs:
 
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      - name: configure npm auth for github packages
+        shell: bash
+        run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_READ_TOKEN }}" >> ~/.npmrc
 
       - name: install dependencies
         run: npm ci
