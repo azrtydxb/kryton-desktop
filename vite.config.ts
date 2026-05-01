@@ -1,23 +1,38 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // Inline the SQL schema so it can be used in the browser/WebView.
 // The @azrtydxb/core package uses node:fs to read schema.sql at runtime,
-// which doesn't work in a browser environment. We provide stub modules
-// via alias so the build succeeds.
-const schemaSqlPath = resolve(
-  __dirname,
-  "node_modules/@azrtydxb/core/dist/generated/schema.sql"
-);
-const schemaSql = readFileSync(schemaSqlPath, "utf8");
+// which doesn't work in a browser environment.
+//
+// Schema resolution order:
+//   1. Installed package dist/generated/schema.sql (prod, if published correctly)
+//   2. Sibling kryton monorepo packages/core/src/generated/schema.sql (dev)
+function resolveSchema(): string {
+  const candidates = [
+    resolve(__dirname, "node_modules/@azrtydxb/core/dist/generated/schema.sql"),
+    resolve(__dirname, "../kryton/packages/core/src/generated/schema.sql"),
+    resolve(__dirname, "../kryton/packages/core/dist/generated/schema.sql"),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      return readFileSync(p, "utf8");
+    }
+  }
+  throw new Error(
+    "schema.sql not found. Checked:\n" + candidates.map(p => "  " + p).join("\n") +
+    "\nEnsure @azrtydxb/core is installed or the kryton monorepo is a sibling directory."
+  );
+}
+
+const schemaSql = resolveSchema();
 
 // Write stub modules that Vite will alias into
-import { mkdirSync, writeFileSync } from "node:fs";
 const stubsDir = resolve(__dirname, "node_modules/.vite-stubs");
 mkdirSync(stubsDir, { recursive: true });
 
