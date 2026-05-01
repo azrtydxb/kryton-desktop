@@ -12,7 +12,7 @@
   "app": {
     "windows": [],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' tauri: https://github.com https://raw.githubusercontent.com; script-src 'self' 'unsafe-eval' https://raw.githubusercontent.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' tauri: https: wss:;"
     }
   },
   "bundle": {

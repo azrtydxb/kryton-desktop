@@ -8,11 +8,25 @@
  *   4. Render AppShell from @azrtydxb/ui as the top-level shell.
  *   5. Touch the account on mount (updates last_logged_in_at).
  *   6. Listen for Tauri menu-action events and route them.
+ *   7. (DCC-C1) Wrap the tree in PluginRoot; provide PluginManagerScreen.
+ *   8. (DCC-C2) Wire AgentsPanel to CoreAdapter.agents.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { AppShell, KrytonDataProvider } from "@azrtydxb/ui";
+import {
+  AppShell,
+  KrytonDataProvider,
+  PluginRoot,
+  PluginManagerScreen,
+  AgentsPanel,
+} from "@azrtydxb/ui";
+import type {
+  ActivePluginInfo,
+  PluginManagerAPI,
+  AgentInfo,
+  NewTokenResult,
+} from "@azrtydxb/ui";
 import { initDesktopCore } from "./core/desktop-init";
 import { authStorage } from "./auth/auth-storage";
 import { CoreAdapter } from "./core/CoreAdapter";
@@ -40,11 +54,89 @@ type LoadState =
 // Component
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Plugin screen helper — builds a PluginManagerAPI backed by the server
+// ---------------------------------------------------------------------------
+
+function buildPluginManagerAPI(serverUrl: string, authTokenFn: () => Promise<string | null>): PluginManagerAPI {
+  const headers = async (): Promise<Record<string, string>> => {
+    const tok = await authTokenFn();
+    return tok ? { Authorization: `Bearer ${tok}` } : {};
+  };
+
+  const apiFetch = async (path: string, opts?: RequestInit): Promise<Response> => {
+    const h = await headers();
+    return fetch(`${serverUrl}${path}`, { ...opts, headers: { ...h, ...(opts?.headers as Record<string, string> | undefined) } });
+  };
+
+  return {
+    getRegistry: async () => {
+      const res = await apiFetch("/api/plugins/registry");
+      if (!res.ok) return [];
+      const body = await res.json() as { plugins: unknown[] };
+      return (body.plugins ?? []) as ReturnType<PluginManagerAPI["getRegistry"]> extends Promise<infer T> ? T : never;
+    },
+    getAllPlugins: async () => {
+      const res = await apiFetch("/api/plugins/installed");
+      if (!res.ok) return [];
+      const body = await res.json() as { plugins: unknown[] };
+      return (body.plugins ?? []) as ReturnType<PluginManagerAPI["getAllPlugins"]> extends Promise<infer T> ? T : never;
+    },
+    checkPluginUpdates: async () => {
+      const res = await apiFetch("/api/plugins/updates");
+      if (!res.ok) return [];
+      const body = await res.json() as { updates: unknown[] };
+      return (body.updates ?? []) as ReturnType<PluginManagerAPI["checkPluginUpdates"]> extends Promise<infer T> ? T : never;
+    },
+    getSettings: async () => {
+      const res = await apiFetch("/api/plugins/settings");
+      if (!res.ok) return {};
+      return res.json() as Promise<Record<string, string>>;
+    },
+    updateSetting: async (key: string, value: string) => {
+      await apiFetch("/api/plugins/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value }),
+      });
+    },
+    installPlugin: async (id: string) => {
+      await apiFetch(`/api/plugins/${id}/install`, { method: "POST" });
+    },
+    uninstallPlugin: async (id: string) => {
+      await apiFetch(`/api/plugins/${id}`, { method: "DELETE" });
+    },
+    enablePlugin: async (id: string) => {
+      await apiFetch(`/api/plugins/${id}/enable`, { method: "POST" });
+    },
+    disablePlugin: async (id: string) => {
+      await apiFetch(`/api/plugins/${id}/disable`, { method: "POST" });
+    },
+    reloadPlugin: async (id: string) => {
+      await apiFetch(`/api/plugins/${id}/reload`, { method: "POST" });
+    },
+    updatePlugin: async (id: string) => {
+      await apiFetch(`/api/plugins/${id}/update`, { method: "POST" });
+    },
+  };
+}
+
 export function AccountWindow({ accountId }: { accountId: string }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   // Keep a stable ref so the menu-action handler can access the latest adapter
   // without re-subscribing every render.
   const adapterRef = useRef<CoreAdapter | null>(null);
+
+  // DCC-C1: active plugins fetched from server for PluginRoot
+  const [activePlugins, setActivePlugins] = useState<ActivePluginInfo[]>([]);
+
+  // DCC-C1: which secondary screen is open (null = main content)
+  type ActiveScreen = null | "plugins" | "agents";
+  const [activeScreen, setActiveScreen] = useState<ActiveScreen>(null);
+
+  // DCC-C2: agents state
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [newTokenResult, setNewTokenResult] = useState<NewTokenResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,8 +180,14 @@ export function AccountWindow({ accountId }: { accountId: string }) {
           if (firstTag?.userId) userId = firstTag.userId;
         }
 
-        // 5. Build the adapter.
-        const adapter = new CoreAdapter(core, userId);
+        // 5. Build the adapter (DCC-C2: pass serverUrl + authTokenFn for agent API).
+        const adapter = new CoreAdapter(
+          core,
+          userId,
+          /* userEmail */ "",
+          account.server_url,
+          () => authStorage.getToken(accountId),
+        );
         adapterRef.current = adapter;
 
         setState({ status: "ready", adapter, accountLabel: account.label, serverUrl: account.server_url });
@@ -184,6 +282,52 @@ export function AccountWindow({ accountId }: { accountId: string }) {
   }, []);
 
   // ---------------------------------------------------------------------------
+  // DCC-C1: Fetch active plugins from server when ready
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    const { serverUrl } = state;
+
+    async function fetchActivePlugins() {
+      try {
+        const tok = await authStorage.getToken(accountId);
+        const headers: Record<string, string> = tok ? { Authorization: `Bearer ${tok}` } : {};
+        const res = await fetch(`${serverUrl}/api/plugins/active`, { headers });
+        if (!res.ok) return;
+        const body = await res.json() as { plugins: ActivePluginInfo[] };
+        setActivePlugins(body.plugins ?? []);
+      } catch (err: unknown) {
+        console.warn("[AccountWindow] fetchActivePlugins failed:", err);
+      }
+    }
+
+    void fetchActivePlugins();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.status, accountId]);
+
+  // ---------------------------------------------------------------------------
+  // DCC-C2: Fetch agents when the agents screen is opened
+  // ---------------------------------------------------------------------------
+
+  const refreshAgents = useCallback(async () => {
+    if (state.status !== "ready") return;
+    try {
+      const list = await state.adapter.agents.list();
+      setAgents(list);
+    } catch (err: unknown) {
+      console.warn("[AccountWindow] agents.list failed:", err);
+    }
+  }, [state]);
+
+  useEffect(() => {
+    if (activeScreen === "agents") {
+      void refreshAgents();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeScreen]);
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -204,22 +348,100 @@ export function AccountWindow({ accountId }: { accountId: string }) {
     );
   }
 
+  // Build stable PluginManagerAPI reference (recreated only when serverUrl changes).
+  const pluginManagerAPI: PluginManagerAPI = buildPluginManagerAPI(
+    state.serverUrl,
+    () => authStorage.getToken(accountId),
+  );
+
   return (
     <KrytonDataProvider adapter={state.adapter}>
-      <AppShell
-        header={
-          <div className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-surface-700 dark:text-surface-300">
-            <span className="text-primary-600 font-semibold">Kryton</span>
-            <span className="text-surface-400">/</span>
-            <span>{state.accountLabel}</span>
-          </div>
-        }
-      >
-        {/* Main content area — feature panels will be mounted here in later phases. */}
-        <div className="flex h-full items-center justify-center text-surface-400 text-sm select-none">
-          Ready — account window initialised.
-        </div>
-      </AppShell>
+      {/* DCC-C1: PluginRoot loads/unloads active client-side plugin bundles */}
+      <PluginRoot activePlugins={activePlugins}>
+        <AppShell
+          header={
+            <div className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-surface-700 dark:text-surface-300">
+              <span className="text-primary-600 font-semibold">Kryton</span>
+              <span className="text-surface-400">/</span>
+              <span>{state.accountLabel}</span>
+              {/* Secondary-screen nav buttons */}
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveScreen(activeScreen === "plugins" ? null : "plugins")}
+                  className="rounded px-2 py-1 text-xs font-medium hover:bg-surface-100 dark:hover:bg-surface-800 data-[active=true]:text-primary-600"
+                  data-active={activeScreen === "plugins"}
+                  aria-label="Plugin Manager"
+                >
+                  Plugins
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveScreen(activeScreen === "agents" ? null : "agents")}
+                  className="rounded px-2 py-1 text-xs font-medium hover:bg-surface-100 dark:hover:bg-surface-800 data-[active=true]:text-primary-600"
+                  data-active={activeScreen === "agents"}
+                  aria-label="Agents"
+                >
+                  Agents
+                </button>
+              </div>
+            </div>
+          }
+        >
+          {/* DCC-C1: Plugin Manager screen */}
+          {activeScreen === "plugins" && (
+            <PluginManagerScreen api={pluginManagerAPI} />
+          )}
+
+          {/* DCC-C2: Agents screen */}
+          {activeScreen === "agents" && (
+            <AgentsPanel
+              agents={agents}
+              newTokenResult={newTokenResult}
+              onDismissNewToken={() => setNewTokenResult(null)}
+              onCreateAgent={(name, label, cedarPolicy) => {
+                state.adapter.agents
+                  .create({ name, label, policyText: cedarPolicy })
+                  .then(() => refreshAgents())
+                  .catch((err: unknown) =>
+                    console.warn("[AccountWindow] agents.create failed:", err),
+                  );
+              }}
+              onDeleteAgent={(id) => {
+                state.adapter.agents
+                  .delete(id)
+                  .then(() => refreshAgents())
+                  .catch((err: unknown) =>
+                    console.warn("[AccountWindow] agents.delete failed:", err),
+                  );
+              }}
+              onMintToken={(agentId) => {
+                state.adapter.agents
+                  .mintToken(agentId)
+                  .then((result) => setNewTokenResult(result))
+                  .catch((err: unknown) =>
+                    console.warn("[AccountWindow] agents.mintToken failed:", err),
+                  );
+              }}
+              onRevokeToken={(agentId, tokenId) => {
+                state.adapter.agents
+                  .revokeToken(agentId, tokenId)
+                  .then(() => refreshAgents())
+                  .catch((err: unknown) =>
+                    console.warn("[AccountWindow] agents.revokeToken failed:", err),
+                  );
+              }}
+            />
+          )}
+
+          {/* Main content area */}
+          {activeScreen === null && (
+            <div className="flex h-full items-center justify-center text-surface-400 text-sm select-none">
+              Ready — account window initialised.
+            </div>
+          )}
+        </AppShell>
+      </PluginRoot>
     </KrytonDataProvider>
   );
 }

@@ -3,6 +3,7 @@
  * expected by @azrtydxb/ui's KrytonDataProvider.
  *
  * All 14 adapter method groups are implemented here.
+ * Agent API methods (DCC-C2) call /api/agents/* directly with a bearer token.
  */
 import type { Kryton } from "@azrtydxb/core";
 import type {
@@ -15,6 +16,8 @@ import type {
   CurrentUser,
   SyncStatus,
   NoteFilter,
+  AgentInfo,
+  NewTokenResult,
 } from "@azrtydxb/ui";
 import type * as Y from "yjs";
 import type { Awareness } from "y-protocols/awareness";
@@ -29,15 +32,18 @@ function uuid(): string {
 
 export class CoreAdapter implements KrytonDataAdapter {
   /**
-   * @param core   - Initialised Kryton instance.
-   * @param userId - The authenticated user's id. Used for settings (which use a
-   *                 composite key of userId + key) and currentUser placeholder.
-   * @param userEmail - Optional email for currentUser placeholder.
+   * @param core         - Initialised Kryton instance.
+   * @param userId       - The authenticated user's id.
+   * @param userEmail    - Optional email for currentUser placeholder.
+   * @param serverUrl    - Base URL of the Kryton server (for agent API calls).
+   * @param authTokenFn  - Returns the current bearer token (for agent API calls).
    */
   constructor(
     private readonly core: Kryton,
     private readonly userId: string,
     private readonly userEmail: string = "",
+    private readonly serverUrl: string = "",
+    private readonly authTokenFn: () => string | null | Promise<string | null> = () => null,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -303,4 +309,85 @@ export class CoreAdapter implements KrytonDataAdapter {
       displayName: this.userEmail.split("@")[0] || this.userId,
     };
   }
+
+  // ---------------------------------------------------------------------------
+  // agents  (DCC-C2) — calls /api/agents/* directly via fetch + bearer token
+  // ---------------------------------------------------------------------------
+
+  /** Resolve the auth token (supports both sync and async token accessors). */
+  private async resolveToken(): Promise<string | null> {
+    const t = this.authTokenFn();
+    return t instanceof Promise ? await t : t;
+  }
+
+  private authHeader(token: string | null): Record<string, string> {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  agents = {
+    list: async (): Promise<AgentInfo[]> => {
+      const tok = await this.resolveToken();
+      const res = await fetch(`${this.serverUrl}/api/agents`, {
+        headers: this.authHeader(tok),
+      });
+      if (!res.ok) throw new Error(`agents.list: ${res.status}`);
+      const body = await res.json() as { agents: AgentInfo[] };
+      return body.agents ?? [];
+    },
+
+    create: async (input: {
+      name: string;
+      label: string;
+      policyText?: string;
+    }): Promise<AgentInfo> => {
+      const tok = await this.resolveToken();
+      const res = await fetch(`${this.serverUrl}/api/agents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...this.authHeader(tok) },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) throw new Error(`agents.create: ${res.status}`);
+      return res.json() as Promise<AgentInfo>;
+    },
+
+    delete: async (id: string): Promise<void> => {
+      const tok = await this.resolveToken();
+      const res = await fetch(`${this.serverUrl}/api/agents/${id}`, {
+        method: "DELETE",
+        headers: this.authHeader(tok),
+      });
+      if (!res.ok) throw new Error(`agents.delete: ${res.status}`);
+    },
+
+    mintToken: async (agentId: string): Promise<NewTokenResult> => {
+      const tok = await this.resolveToken();
+      const res = await fetch(`${this.serverUrl}/api/agents/${agentId}/tokens`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...this.authHeader(tok) },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error(`agents.mintToken: ${res.status}`);
+      const body = await res.json() as { tokenId: string; token: string };
+      return { agentId, tokenId: body.tokenId, token: body.token };
+    },
+
+    revokeToken: async (agentId: string, tokenId: string): Promise<void> => {
+      const tok = await this.resolveToken();
+      const res = await fetch(`${this.serverUrl}/api/agents/${agentId}/tokens/${tokenId}`, {
+        method: "DELETE",
+        headers: this.authHeader(tok),
+      });
+      if (!res.ok) throw new Error(`agents.revokeToken: ${res.status}`);
+    },
+
+    setPolicy: async (agentId: string, policyText: string): Promise<void> => {
+      const tok = await this.resolveToken();
+      const res = await fetch(`${this.serverUrl}/api/agents/${agentId}/policy`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...this.authHeader(tok) },
+        body: JSON.stringify({ policyText }),
+      });
+      if (!res.ok) throw new Error(`agents.setPolicy: ${res.status}`);
+    },
+  };
 }
