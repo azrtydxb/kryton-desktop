@@ -16,6 +16,13 @@
       "csp": null
     }
   },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["kryton"]
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

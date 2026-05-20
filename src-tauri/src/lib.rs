@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod auth;
+pub mod deep_link;
 pub mod error;
 pub mod ipc;
 pub mod menu;
@@ -71,6 +72,10 @@ pub(crate) fn open_quick_capture_window<R: tauri::Runtime>(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            crate::deep_link::handle_argv(app, &argv);
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             ipc::list_accounts,

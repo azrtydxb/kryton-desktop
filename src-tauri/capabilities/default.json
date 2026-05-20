@@ -11,6 +11,7 @@
     "core:app:default",
     "core:tray:default",
     "global-shortcut:default",
-    "opener:default"
+    "opener:default",
+    "deep-link:default"
   ]
 }
