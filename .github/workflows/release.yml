@@ -17,12 +17,20 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
+            tauri-platform: darwin-aarch64
+            bundle-glob: "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Kryton.app.tar.gz"
           - os: macos-latest
             target: x86_64-apple-darwin
+            tauri-platform: darwin-x86_64
+            bundle-glob: "src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Kryton.app.tar.gz"
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            tauri-platform: windows-x86_64
+            bundle-glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Kryton_*_x64-setup.exe
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            tauri-platform: linux-x86_64
+            bundle-glob: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/Kryton_*_amd64.AppImage
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +63,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -72,5 +81,101 @@ jobs:
           releaseName: "Kryton ${{ github.event.inputs.tag || github.ref_name }}"
           releaseBody: "See the [CHANGELOG](https://github.com/azrtydxb/kryton-desktop/blob/main/CHANGELOG.md) for details."
           releaseDraft: true
-          prerelease: ${{ contains(github.event.inputs.tag || github.ref_name, '-pre.') }}
+          prerelease: false
           args: --target ${{ matrix.target }}
+
+      # tauri-action's auto-generated latest.json upload is skipped when each
+      # matrix job only has its own platform's signature. Upload this platform's
+      # bundle + .sig as a workflow artifact; the assemble-updater-json job
+      # downstream merges them into a single latest.json.
+      - name: Stage updater bundle + signature
+        shell: bash
+        run: |
+          mkdir -p .updater-staging
+          # find the bundle (use shell glob expansion of bundle-glob input)
+          bundle=$(ls ${{ matrix.bundle-glob }} 2>/dev/null | head -1)
+          if [ -z "$bundle" ]; then
+            echo "no updater bundle matched ${{ matrix.bundle-glob }} — skipping"
+            exit 0
+          fi
+          sig="${bundle}.sig"
+          if [ ! -f "$sig" ]; then
+            echo "no signature file at $sig — skipping"
+            exit 0
+          fi
+          cp "$bundle" ".updater-staging/bundle"
+          cp "$sig" ".updater-staging/signature"
+          echo "${{ matrix.tauri-platform }}" > .updater-staging/platform
+          basename "$bundle" > .updater-staging/filename
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: updater-${{ matrix.tauri-platform }}
+          path: .updater-staging
+          if-no-files-found: warn
+
+  assemble-updater-json:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: updater-artifacts
+          pattern: updater-*
+
+      - name: Compose latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${tag#v}"
+          base="https://github.com/${{ github.repository }}/releases/download/${tag}"
+          notes=$(awk '/^## /{ if (p) exit; p=1; next } p' CHANGELOG.md 2>/dev/null | head -20 || echo "")
+          if [ -z "$notes" ]; then notes="Release ${tag}"; fi
+          platforms_json=""
+          for dir in updater-artifacts/updater-*; do
+            [ -d "$dir" ] || continue
+            platform=$(cat "$dir/platform")
+            filename=$(cat "$dir/filename")
+            signature=$(cat "$dir/signature")
+            entry=$(jq -n \
+              --arg sig "$signature" \
+              --arg url "${base}/${filename}" \
+              '{signature: $sig, url: $url}')
+            if [ -n "$platforms_json" ]; then platforms_json="$platforms_json,"; fi
+            platforms_json="${platforms_json}\"${platform}\": ${entry}"
+          done
+          if [ -z "$platforms_json" ]; then
+            echo "no platforms had a signed updater bundle — refusing to upload empty latest.json"
+            exit 1
+          fi
+          pub_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          cat > latest.json <<EOF
+          {
+            "version": "${version}",
+            "notes": $(jq -Rs <<< "$notes"),
+            "pub_date": "${pub_date}",
+            "platforms": { ${platforms_json} }
+          }
+          EOF
+          cat latest.json
+
+      - name: Upload latest.json to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release upload "$tag" latest.json --clobber --repo "${{ github.repository }}"
+
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          # Un-draft so the /releases/latest/ endpoint serves it. Pre-releases
+          # are filtered out of /latest/, so we keep prerelease=false even
+          # for vX.Y.Z-pre.N tags — the iteration discipline is in the tag
+          # name, not GitHub's metadata flag.
+          gh release edit "$tag" --draft=false --prerelease=false --repo "${{ github.repository }}"
