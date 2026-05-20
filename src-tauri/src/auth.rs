@@ -64,41 +64,193 @@ impl AuthClient {
 }
 
 pub mod keychain {
+    //! Credential store.
+    //!
+    //! Release builds use the OS keychain via the `keyring` crate (macOS
+    //! Keychain, Windows Credential Manager, Linux Secret Service).
+    //!
+    //! Debug builds use an AES-256-GCM-encrypted file at
+    //! `<app_config_dir>/secrets.enc`. The key is a random 32-byte file at
+    //! `<app_config_dir>/secrets.key` with permissions `0600`. This is a
+    //! deliberate dev-only tradeoff because unsigned dev binaries get a
+    //! fresh keychain identity on every `cargo build`, breaking keyring
+    //! reads across rebuilds.
     use crate::error::{AppError, AppResult};
     use tauri::{AppHandle, Runtime};
     use uuid::Uuid;
 
-    const SERVICE: &str = "app.kryton.desktop";
+    #[cfg(not(debug_assertions))]
+    mod backend {
+        use super::*;
 
-    fn account(id: &Uuid) -> String {
-        id.to_string()
-    }
+        const SERVICE: &str = "app.kryton.desktop";
 
-    pub fn store<R: Runtime>(_app: &AppHandle<R>, id: &Uuid, password: &str) -> AppResult<()> {
-        let entry = keyring::Entry::new(SERVICE, &account(id))
-            .map_err(|e| AppError::Keychain(e.to_string()))?;
-        entry
-            .set_password(password)
-            .map_err(|e| AppError::Keychain(e.to_string()))
-    }
-
-    pub fn read<R: Runtime>(_app: &AppHandle<R>, id: &Uuid) -> AppResult<String> {
-        let entry = keyring::Entry::new(SERVICE, &account(id))
-            .map_err(|e| AppError::Keychain(e.to_string()))?;
-        entry
-            .get_password()
-            .map_err(|e| AppError::Keychain(e.to_string()))
-    }
-
-    pub fn delete<R: Runtime>(_app: &AppHandle<R>, id: &Uuid) -> AppResult<()> {
-        let entry = keyring::Entry::new(SERVICE, &account(id))
-            .map_err(|e| AppError::Keychain(e.to_string()))?;
-        match entry.delete_credential() {
-            Ok(()) => Ok(()),
-            // Treat "no entry" as success — idempotent delete.
-            Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(AppError::Keychain(e.to_string())),
+        fn account(id: &Uuid) -> String {
+            id.to_string()
         }
+
+        pub fn store<R: Runtime>(_app: &AppHandle<R>, id: &Uuid, password: &str) -> AppResult<()> {
+            let entry = keyring::Entry::new(SERVICE, &account(id))
+                .map_err(|e| AppError::Keychain(e.to_string()))?;
+            entry
+                .set_password(password)
+                .map_err(|e| AppError::Keychain(e.to_string()))
+        }
+
+        pub fn read<R: Runtime>(_app: &AppHandle<R>, id: &Uuid) -> AppResult<String> {
+            let entry = keyring::Entry::new(SERVICE, &account(id))
+                .map_err(|e| AppError::Keychain(e.to_string()))?;
+            entry
+                .get_password()
+                .map_err(|e| AppError::Keychain(e.to_string()))
+        }
+
+        pub fn delete<R: Runtime>(_app: &AppHandle<R>, id: &Uuid) -> AppResult<()> {
+            let entry = keyring::Entry::new(SERVICE, &account(id))
+                .map_err(|e| AppError::Keychain(e.to_string()))?;
+            match entry.delete_credential() {
+                Ok(()) => Ok(()),
+                Err(keyring::Error::NoEntry) => Ok(()),
+                Err(e) => Err(AppError::Keychain(e.to_string())),
+            }
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    mod backend {
+        use super::*;
+        use aes_gcm::aead::{Aead, KeyInit};
+        use aes_gcm::{Aes256Gcm, Nonce};
+        use rand::RngCore;
+        use std::collections::HashMap;
+        use std::path::PathBuf;
+        use std::sync::Mutex;
+        use tauri::Manager;
+
+        static LOCK: Mutex<()> = Mutex::new(());
+
+        fn dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
+            let d = app
+                .path()
+                .app_config_dir()
+                .map_err(|e| AppError::Keychain(e.to_string()))?;
+            std::fs::create_dir_all(&d)?;
+            Ok(d)
+        }
+
+        fn key_path<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
+            Ok(dir(app)?.join("secrets.key"))
+        }
+
+        fn data_path<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
+            Ok(dir(app)?.join("secrets.enc"))
+        }
+
+        fn read_or_create_key<R: Runtime>(app: &AppHandle<R>) -> AppResult<[u8; 32]> {
+            let path = key_path(app)?;
+            if path.exists() {
+                let bytes = std::fs::read(&path)?;
+                if bytes.len() != 32 {
+                    return Err(AppError::Keychain("invalid key file length".into()));
+                }
+                let mut out = [0u8; 32];
+                out.copy_from_slice(&bytes);
+                return Ok(out);
+            }
+            let mut key = [0u8; 32];
+            rand::thread_rng().fill_bytes(&mut key);
+            std::fs::write(&path, key)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &path,
+                    std::fs::Permissions::from_mode(0o600),
+                );
+            }
+            Ok(key)
+        }
+
+        fn load<R: Runtime>(app: &AppHandle<R>) -> AppResult<HashMap<String, String>> {
+            let path = data_path(app)?;
+            if !path.exists() {
+                return Ok(HashMap::new());
+            }
+            let blob = std::fs::read(&path)?;
+            if blob.len() < 12 {
+                return Err(AppError::Keychain("secrets file too short".into()));
+            }
+            let (nonce_bytes, ciphertext) = blob.split_at(12);
+            let key = read_or_create_key(app)?;
+            let cipher = Aes256Gcm::new_from_slice(&key)
+                .map_err(|e| AppError::Keychain(e.to_string()))?;
+            let plaintext = cipher
+                .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
+                .map_err(|e| AppError::Keychain(format!("decrypt: {e}")))?;
+            Ok(serde_json::from_slice(&plaintext).unwrap_or_default())
+        }
+
+        fn save<R: Runtime>(
+            app: &AppHandle<R>,
+            map: &HashMap<String, String>,
+        ) -> AppResult<()> {
+            let key = read_or_create_key(app)?;
+            let cipher = Aes256Gcm::new_from_slice(&key)
+                .map_err(|e| AppError::Keychain(e.to_string()))?;
+            let mut nonce_bytes = [0u8; 12];
+            rand::thread_rng().fill_bytes(&mut nonce_bytes);
+            let plaintext = serde_json::to_vec(map)?;
+            let ciphertext = cipher
+                .encrypt(Nonce::from_slice(&nonce_bytes), plaintext.as_ref())
+                .map_err(|e| AppError::Keychain(format!("encrypt: {e}")))?;
+            let mut blob = nonce_bytes.to_vec();
+            blob.extend_from_slice(&ciphertext);
+            let path = data_path(app)?;
+            let tmp = path.with_extension("enc.tmp");
+            std::fs::write(&tmp, &blob)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ =
+                    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+            }
+            std::fs::rename(&tmp, &path)?;
+            Ok(())
+        }
+
+        pub fn store<R: Runtime>(app: &AppHandle<R>, id: &Uuid, password: &str) -> AppResult<()> {
+            let _g = LOCK.lock().unwrap();
+            let mut map = load(app)?;
+            map.insert(id.to_string(), password.to_string());
+            save(app, &map)
+        }
+
+        pub fn read<R: Runtime>(app: &AppHandle<R>, id: &Uuid) -> AppResult<String> {
+            let _g = LOCK.lock().unwrap();
+            let map = load(app)?;
+            map.get(&id.to_string())
+                .cloned()
+                .ok_or_else(|| AppError::Keychain("no password for account".into()))
+        }
+
+        pub fn delete<R: Runtime>(app: &AppHandle<R>, id: &Uuid) -> AppResult<()> {
+            let _g = LOCK.lock().unwrap();
+            let mut map = load(app)?;
+            map.remove(&id.to_string());
+            save(app, &map)
+        }
+    }
+
+    pub fn store<R: Runtime>(app: &AppHandle<R>, id: &Uuid, password: &str) -> AppResult<()> {
+        backend::store(app, id, password)
+    }
+
+    pub fn read<R: Runtime>(app: &AppHandle<R>, id: &Uuid) -> AppResult<String> {
+        backend::read(app, id)
+    }
+
+    pub fn delete<R: Runtime>(app: &AppHandle<R>, id: &Uuid) -> AppResult<()> {
+        backend::delete(app, id)
     }
 }
 
