@@ -331,7 +331,7 @@ pub fn run() {
             WebviewWindowBuilder::new(
                 app,
                 "login",
-                WebviewUrl::App("login/index.html".into()),
+                WebviewUrl::App("src/login/index.html".into()),
             )
             .title("Kryton")
             .inner_size(420.0, 540.0)
@@ -1212,7 +1212,7 @@ pub fn run() {
             let state = ipc::AppState::init(&app.handle())?;
             app.manage(state);
             WebviewWindowBuilder::new(app, "login",
-                WebviewUrl::App("login/index.html".into()))
+                WebviewUrl::App("src/login/index.html".into()))
                 .title("Kryton")
                 .inner_size(420.0, 540.0)
                 .resizable(false)
@@ -1609,7 +1609,7 @@ In `src-tauri/src/lib.rs`, replace the `.setup` block:
 
     if accounts.is_empty() {
         WebviewWindowBuilder::new(app, "login",
-            WebviewUrl::App("login/index.html".into()))
+            WebviewUrl::App("src/login/index.html".into()))
             .title("Kryton")
             .inner_size(420.0, 540.0)
             .resizable(false)
@@ -1753,7 +1753,7 @@ Add `pub mod menu;` and stubs for `open_settings_window`, `open_quick_capture_wi
 fn open_settings_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     if let Some(w) = app.get_webview_window("settings") { let _ = w.show(); let _ = w.set_focus(); return Ok(()); }
     WebviewWindowBuilder::new(app, "settings",
-        WebviewUrl::App("settings/index.html".into()))
+        WebviewUrl::App("src/settings/index.html".into()))
         .title("Kryton — Settings")
         .inner_size(640.0, 480.0)
         .build()?;
@@ -1763,7 +1763,7 @@ fn open_settings_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::
 fn open_add_server_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     if let Some(w) = app.get_webview_window("login") { let _ = w.show(); let _ = w.set_focus(); return Ok(()); }
     WebviewWindowBuilder::new(app, "login",
-        WebviewUrl::App("login/index.html".into()))
+        WebviewUrl::App("src/login/index.html".into()))
         .title("Kryton — Add Server")
         .inner_size(420.0, 540.0)
         .resizable(false)
@@ -1774,7 +1774,7 @@ fn open_add_server_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri
 fn open_quick_capture_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     if let Some(w) = app.get_webview_window("quick-capture") { let _ = w.show(); let _ = w.set_focus(); return Ok(()); }
     WebviewWindowBuilder::new(app, "quick-capture",
-        WebviewUrl::App("quick-capture/index.html".into()))
+        WebviewUrl::App("src/quick-capture/index.html".into()))
         .title("Quick Capture")
         .inner_size(480.0, 320.0)
         .always_on_top(true)

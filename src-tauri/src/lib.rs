@@ -7,7 +7,7 @@ pub fn run() {
             WebviewWindowBuilder::new(
                 app,
                 "login",
-                WebviewUrl::App("login/index.html".into()),
+                WebviewUrl::App("src/login/index.html".into()),
             )
             .title("Kryton")
             .inner_size(420.0, 540.0)
