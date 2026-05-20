@@ -90,14 +90,26 @@ pub mod keychain {
         }
 
         pub fn store<R: Runtime>(_app: &AppHandle<R>, id: &Uuid, password: &str) -> AppResult<()> {
-            let entry = keyring::Entry::new(SERVICE, &account(id))
-                .map_err(|e| AppError::Keychain(e.to_string()))?;
-            entry
-                .set_password(password)
-                .map_err(|e| AppError::Keychain(e.to_string()))
+            tracing::info!("keychain::store service={SERVICE} account={id} len={}", password.len());
+            let entry = keyring::Entry::new(SERVICE, &account(id)).map_err(|e| {
+                tracing::warn!("keychain::store new failed: {e}");
+                AppError::Keychain(e.to_string())
+            })?;
+            entry.set_password(password).map_err(|e| {
+                tracing::warn!("keychain::store set_password failed: {e}");
+                AppError::Keychain(e.to_string())
+            })?;
+            // Immediately read it back to verify it actually landed.
+            match entry.get_password() {
+                Ok(p) if p == password => tracing::info!("keychain::store verified ({} bytes)", p.len()),
+                Ok(p) => tracing::warn!("keychain::store readback mismatch ({} bytes vs {} expected)", p.len(), password.len()),
+                Err(e) => tracing::warn!("keychain::store readback failed: {e}"),
+            }
+            Ok(())
         }
 
         pub fn read<R: Runtime>(_app: &AppHandle<R>, id: &Uuid) -> AppResult<String> {
+            tracing::debug!("keychain::read service={SERVICE} account={id}");
             let entry = keyring::Entry::new(SERVICE, &account(id))
                 .map_err(|e| AppError::Keychain(e.to_string()))?;
             entry
