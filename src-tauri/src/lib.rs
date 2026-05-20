@@ -19,17 +19,40 @@ pub fn run() {
             ipc::close_server,
         ])
         .setup(|app| {
-            let state = ipc::AppState::init(app.handle())?;
+            let handle = app.handle().clone();
+            let state = ipc::AppState::init(&handle)?;
+            let (accounts, default_active) = {
+                let f = state.accounts.lock().unwrap();
+                (f.accounts.clone(), f.default_active)
+            };
             app.manage(state);
-            WebviewWindowBuilder::new(
-                app,
-                "login",
-                WebviewUrl::App("src/login/index.html".into()),
-            )
-            .title("Kryton")
-            .inner_size(420.0, 540.0)
-            .resizable(false)
-            .build()?;
+
+            if accounts.is_empty() {
+                WebviewWindowBuilder::new(
+                    app,
+                    "login",
+                    WebviewUrl::App("src/login/index.html".into()),
+                )
+                .title("Kryton")
+                .inner_size(420.0, 540.0)
+                .resizable(false)
+                .build()?;
+            } else {
+                for a in &accounts {
+                    let h = handle.clone();
+                    let aid = a.id;
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = ipc::do_silent_relogin(h, aid).await {
+                            tracing::warn!("silent relogin failed for {aid}: {e}");
+                        }
+                    });
+                }
+                for a in &accounts {
+                    window_mgr::open_or_focus(&handle, a)?;
+                }
+                let active_id = default_active.unwrap_or(accounts[0].id);
+                window_mgr::hide_all_except(&handle, &active_id);
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -97,6 +97,26 @@ fn read_password<R: Runtime>(app: &AppHandle<R>, id: &Uuid) -> AppResult<String>
     crate::auth::keychain::read(app, id)
 }
 
+/// Free helper that obtains AppState from the AppHandle directly.
+/// Used from async spawn tasks where `tauri::State<'_>` lifetimes are unavailable.
+pub async fn do_silent_relogin<R: Runtime>(app: AppHandle<R>, id: Uuid) -> AppResult<()> {
+    let app_state = app.state::<AppState>();
+    let acct = {
+        let f = app_state.accounts.lock().unwrap();
+        f.accounts
+            .iter()
+            .find(|a| a.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::AccountNotFound(id.to_string()))?
+    };
+    let password = read_password(&app, &acct.id)?;
+    app_state
+        .auth
+        .login(&acct.server_url, &acct.username, &password)
+        .await?;
+    Ok(())
+}
+
 use crate::window_mgr;
 
 #[tauri::command]
