@@ -9,6 +9,7 @@ pub mod tray;
 pub mod window_mgr;
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_deep_link::DeepLinkExt;
 
 pub(crate) fn open_settings_window<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
@@ -144,6 +145,18 @@ pub fn run() {
                 f.settings.shortcut_quick_capture.clone()
             };
             shortcuts::register(&handle, &accel)?;
+
+            // Register deep-link runtime hook for URLs opened while app is running
+            let dl_handle = handle.clone();
+            app.deep_link().on_open_url(move |event| {
+                for u in event.urls() {
+                    if let Some(p) = deep_link::parse(u.as_str()) {
+                        deep_link::handle(&dl_handle, p);
+                    }
+                }
+            });
+            // Process any kryton:// URL passed via argv at launch
+            deep_link::handle_argv(&handle, &std::env::args().collect::<Vec<_>>());
 
             let menu_handle = handle.clone();
             app.on_menu_event(move |_app, ev| {
