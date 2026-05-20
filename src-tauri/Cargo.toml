@@ -34,4 +34,6 @@ keyring = "3"
 
 [dev-dependencies]
 tempfile = "3"
+wiremock = "0.6"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
