@@ -1,6 +1,26 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ipc, windows } from "../shared/ipc";
+import { bootstrapTheme, currentTheme, setTheme, type Theme } from "../shared/theme";
+
+bootstrapTheme().then(renderTheme);
+
+function renderTheme() {
+  const container = document.getElementById("theme-picker") as HTMLDivElement | null;
+  if (!container) return;
+  const active = currentTheme();
+  container.innerHTML = "";
+  for (const t of ["system", "dark", "light"] as const) {
+    const b = document.createElement("button");
+    b.textContent = t;
+    b.setAttribute("aria-pressed", String(t === active));
+    b.addEventListener("click", async () => {
+      await setTheme(t as Theme);
+      renderTheme();
+    });
+    container.appendChild(b);
+  }
+}
 
 listen<string>("update:available", async (ev) => {
   if (confirm(`Update ${ev.payload} is available. Install and restart?`)) {

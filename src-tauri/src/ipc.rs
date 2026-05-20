@@ -122,6 +122,26 @@ pub fn remove_account<R: Runtime>(
 }
 
 #[tauri::command]
+pub fn get_theme(state: State<'_, AppState>) -> String {
+    state.accounts.lock().unwrap().settings.theme.clone()
+}
+
+#[tauri::command]
+pub fn set_theme<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    theme: String,
+) -> AppResult<()> {
+    {
+        let mut f = state.accounts.lock().unwrap();
+        f.settings.theme = theme.clone();
+    }
+    state.save()?;
+    let _ = app.emit("theme:changed", &theme);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn refresh_menu<R: Runtime>(app: AppHandle<R>, state: State<'_, AppState>) -> AppResult<()> {
     let accounts = state.accounts.lock().unwrap().accounts.clone();
     let menu = crate::menu::build(&app, &accounts)

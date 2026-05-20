@@ -21,6 +21,8 @@ pub struct Settings {
     pub launch_at_login: bool,
     #[serde(default = "default_channel")]
     pub auto_update_channel: String,
+    #[serde(default = "default_theme")]
+    pub theme: String,
 }
 
 impl Default for Settings {
@@ -29,6 +31,7 @@ impl Default for Settings {
             shortcut_quick_capture: default_shortcut(),
             launch_at_login: false,
             auto_update_channel: default_channel(),
+            theme: default_theme(),
         }
     }
 }
@@ -38,6 +41,9 @@ fn default_shortcut() -> String {
 }
 fn default_channel() -> String {
     "stable".into()
+}
+fn default_theme() -> String {
+    "system".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

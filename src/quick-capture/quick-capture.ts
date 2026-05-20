@@ -1,5 +1,8 @@
 import { capture } from "../shared/ipc";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { bootstrapTheme } from "../shared/theme";
+
+bootstrapTheme();
 
 const form = document.getElementById("capture") as HTMLFormElement;
 const status = document.getElementById("status") as HTMLSpanElement;

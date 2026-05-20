@@ -43,6 +43,33 @@
   --shadow-md: 0 4px 24px -6px oklch(0 0 0 / 0.5), 0 1px 2px oklch(0 0 0 / 0.4);
 }
 
+[data-theme="light"] {
+  --bg: oklch(0.985 0.003 280);
+  --bg-1: oklch(0.97 0.004 280);
+  --bg-2: oklch(0.945 0.005 280);
+  --bg-3: oklch(0.92 0.006 280);
+  --bg-input: oklch(0.97 0.004 280);
+  --bg-hover: oklch(0.92 0.008 285 / 0.7);
+
+  --line: oklch(0.86 0.008 280);
+  --line-strong: oklch(0.78 0.01 280);
+
+  --fg: oklch(0.18 0.012 280);
+  --fg-1: oklch(0.3 0.012 280);
+  --fg-2: oklch(0.45 0.012 280);
+  --fg-3: oklch(0.6 0.012 280);
+
+  --accent: oklch(0.55 0.22 295);
+  --accent-soft: oklch(0.55 0.22 295 / 0.14);
+  --accent-fg: oklch(0.99 0 0);
+  --accent-danger: oklch(0.55 0.22 25);
+  --accent-good: oklch(0.55 0.16 155);
+
+  --grid: oklch(0.4 0.012 280 / 0.08);
+
+  --shadow-md: 0 4px 24px -6px oklch(0 0 0 / 0.12), 0 1px 2px oklch(0 0 0 / 0.06);
+}
+
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
@@ -183,6 +210,34 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .btn-danger {
   border-color: oklch(0.7 0.2 25 / 0.4);
   color: var(--accent-danger);
+}
+
+/* ─── Segmented control (theme picker) ──────────────────────────────── */
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-2);
+}
+.segmented button {
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--line);
+  cursor: pointer;
+}
+.segmented button:last-child { border-right: 0; }
+.segmented button:hover { background: var(--bg-hover); color: var(--fg-1); }
+.segmented button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 /* ─── Status / footer ───────────────────────────────────────────────── */

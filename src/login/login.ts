@@ -1,4 +1,7 @@
 import { ipc, windows } from "../shared/ipc";
+import { bootstrapTheme } from "../shared/theme";
+
+bootstrapTheme();
 
 const form = document.getElementById("login-form") as HTMLFormElement;
 const err = document.getElementById("error") as HTMLParagraphElement;
