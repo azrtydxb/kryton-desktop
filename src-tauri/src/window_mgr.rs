@@ -27,21 +27,51 @@ pub fn open_or_focus<R: Runtime>(app: &AppHandle<R>, acct: &Account) -> AppResul
     }
     let dir = data_dir(app, &acct.id)?;
     let url: url::Url = acct.server_url.parse()?;
+    let init_script = format!(
+        r#"
+        window.__kryton_desktop = {{
+          accountId: "{account_id}",
+          notify: (title, body) => {{
+            if (window.__TAURI__ && window.__TAURI__.core) {{
+              return window.__TAURI__.core.invoke('notify_from_web', {{ title, body }});
+            }}
+          }}
+        }};
+        (async () => {{
+          if (window.__kryton_relogin_attempted) return;
+          window.__kryton_relogin_attempted = true;
+          const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+          if (!invoke) return;
+          try {{
+            const sess = await fetch('/api/auth/get-session', {{ credentials: 'include' }});
+            if (sess.ok) {{
+              const data = await sess.json();
+              if (data && data.user) return;
+            }}
+          }} catch {{}}
+          let creds;
+          try {{
+            creds = await invoke('webview_creds', {{ accountId: "{account_id}" }});
+          }} catch (e) {{ return; }}
+          if (!creds || !creds.email) return;
+          try {{
+            const r = await fetch('/api/auth/sign-in/email', {{
+              method: 'POST',
+              headers: {{ 'content-type': 'application/json' }},
+              credentials: 'include',
+              body: JSON.stringify({{ email: creds.email, password: creds.password }}),
+            }});
+            if (r.ok) window.location.replace('/');
+          }} catch {{}}
+        }})();
+    "#,
+        account_id = acct.id
+    );
     WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
         .title(format!("Kryton — {}", acct.label))
         .inner_size(1200.0, 800.0)
         .data_directory(dir)
-        .initialization_script(
-            r#"
-        window.__kryton_desktop = {
-          notify: (title, body) => {
-            if (window.__TAURI__ && window.__TAURI__.core) {
-              return window.__TAURI__.core.invoke('notify_from_web', { title, body });
-            }
-          }
-        };
-    "#,
-        )
+        .initialization_script(&init_script)
         .build()
         .map_err(|e| AppError::Invalid(e.to_string()))?;
     Ok(())

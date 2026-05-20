@@ -273,6 +273,28 @@ pub async fn close_server<R: Runtime>(
 
 use crate::notifier::{notify, NotifyArgs};
 
+#[derive(serde::Serialize)]
+pub struct WebviewCreds {
+    pub email: String,
+    pub password: String,
+}
+
+#[tauri::command]
+pub fn webview_creds<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    account_id: Uuid,
+) -> AppResult<WebviewCreds> {
+    let username = {
+        let f = state.accounts.lock().unwrap();
+        f.accounts.iter().find(|a| a.id == account_id).cloned()
+            .ok_or_else(|| AppError::AccountNotFound(account_id.to_string()))?
+            .username
+    };
+    let password = crate::auth::keychain::read(&app, &account_id)?;
+    Ok(WebviewCreds { email: username, password })
+}
+
 #[tauri::command]
 pub fn notify_from_web<R: Runtime>(app: AppHandle<R>, args: NotifyArgs) -> AppResult<()> {
     notify(&app, args)

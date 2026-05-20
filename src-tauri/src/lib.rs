@@ -94,6 +94,7 @@ pub fn run() {
             ipc::open_add_server,
             ipc::capture_to_active,
             ipc::notify_from_web,
+            ipc::webview_creds,
             updater::apply_update,
         ])
         .setup(|app| {
