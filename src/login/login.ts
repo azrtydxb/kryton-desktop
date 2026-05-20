@@ -14,6 +14,7 @@ form.addEventListener("submit", async (e) => {
       username: String(data.get("username")),
       password: String(data.get("password")),
     });
+    await ipc.refreshMenu();
     await invokeOpenServer(acct.id);
   } catch (e: unknown) {
     err.textContent = String(e);

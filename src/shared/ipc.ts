@@ -26,6 +26,7 @@ export const ipc = {
     invoke<void>("silent_relogin", { accountId }),
   removeAccount: (accountId: string) =>
     invoke<void>("remove_account", { accountId }),
+  refreshMenu: () => invoke<void>("refresh_menu"),
 };
 
 export const windows = {

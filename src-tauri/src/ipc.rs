@@ -80,13 +80,35 @@ pub async fn silent_relogin<R: Runtime>(
 }
 
 #[tauri::command]
-pub fn remove_account(state: State<'_, AppState>, account_id: Uuid) -> AppResult<()> {
+pub fn remove_account<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    account_id: Uuid,
+) -> AppResult<()> {
     {
         let mut f = state.accounts.lock().unwrap();
         accounts::remove(&mut f, account_id)?;
     }
     state.save()?;
+    let _ = crate::auth::keychain::delete(&app, &account_id);
+    if let Ok(dir) = crate::window_mgr::data_dir(&app, &account_id) {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     Ok(())
+}
+
+#[tauri::command]
+pub fn refresh_menu<R: Runtime>(app: AppHandle<R>, state: State<'_, AppState>) -> AppResult<()> {
+    let accounts = state.accounts.lock().unwrap().accounts.clone();
+    let menu = crate::menu::build(&app, &accounts)
+        .map_err(|e| AppError::Invalid(e.to_string()))?;
+    app.set_menu(menu).map_err(|e| AppError::Invalid(e.to_string()))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_add_server<R: Runtime>(app: AppHandle<R>) -> AppResult<()> {
+    crate::open_add_server_window(&app).map_err(|e| AppError::Invalid(e.to_string()))
 }
 
 fn store_password<R: Runtime>(app: &AppHandle<R>, id: &Uuid, password: &str) -> AppResult<()> {

@@ -2,9 +2,13 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "login", "settings", "quick-capture", "server-*"],
   "permissions": [
     "core:default",
+    "core:window:default",
+    "core:webview:default",
+    "core:menu:default",
+    "core:app:default",
     "opener:default"
   ]
 }
