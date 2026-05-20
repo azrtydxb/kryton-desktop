@@ -90,12 +90,15 @@ jobs:
       # downstream merges them into a single latest.json.
       - name: Stage updater bundle + signature
         shell: bash
+        working-directory: ${{ github.workspace }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -e
-          mkdir -p .updater-staging
+          stage="${{ github.workspace }}/updater-staging"
+          rm -rf "$stage"
+          mkdir -p "$stage"
           bundle=$(ls ${{ matrix.bundle-glob }} 2>/dev/null | head -1)
           if [ -z "$bundle" ]; then
             echo "no updater bundle matched ${{ matrix.bundle-glob }}"
@@ -108,17 +111,18 @@ jobs:
             echo "regenerating signature for $bundle"
             pnpm tauri signer sign -p "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$bundle" > /dev/null
           fi
-          cp "$bundle" ".updater-staging/bundle"
-          cp "$sig" ".updater-staging/signature"
-          echo "${{ matrix.tauri-platform }}" > .updater-staging/platform
-          basename "$bundle" > .updater-staging/filename
-          echo "staged: $(basename "$bundle") for ${{ matrix.tauri-platform }}"
+          cp "$bundle" "$stage/bundle"
+          cp "$sig" "$stage/signature"
+          echo "${{ matrix.tauri-platform }}" > "$stage/platform"
+          basename "$bundle" > "$stage/filename"
+          echo "--- staged ---"
+          ls -la "$stage"
 
       - uses: actions/upload-artifact@v4
         with:
           name: updater-${{ matrix.tauri-platform }}
-          path: .updater-staging
-          if-no-files-found: warn
+          path: ${{ github.workspace }}/updater-staging
+          if-no-files-found: error
 
   assemble-updater-json:
     needs: build
