@@ -90,23 +90,29 @@ jobs:
       # downstream merges them into a single latest.json.
       - name: Stage updater bundle + signature
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          set -e
           mkdir -p .updater-staging
-          # find the bundle (use shell glob expansion of bundle-glob input)
           bundle=$(ls ${{ matrix.bundle-glob }} 2>/dev/null | head -1)
           if [ -z "$bundle" ]; then
-            echo "no updater bundle matched ${{ matrix.bundle-glob }} — skipping"
-            exit 0
+            echo "no updater bundle matched ${{ matrix.bundle-glob }}"
+            exit 1
           fi
           sig="${bundle}.sig"
           if [ ! -f "$sig" ]; then
-            echo "no signature file at $sig — skipping"
-            exit 0
+            # tauri-action removes .sig files during its skipped latest.json
+            # step. Regenerate using the same signing key.
+            echo "regenerating signature for $bundle"
+            pnpm tauri signer sign -p "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$bundle" > /dev/null
           fi
           cp "$bundle" ".updater-staging/bundle"
           cp "$sig" ".updater-staging/signature"
           echo "${{ matrix.tauri-platform }}" > .updater-staging/platform
           basename "$bundle" > .updater-staging/filename
+          echo "staged: $(basename "$bundle") for ${{ matrix.tauri-platform }}"
 
       - uses: actions/upload-artifact@v4
         with:
