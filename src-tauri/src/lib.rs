@@ -2,6 +2,7 @@ pub mod accounts;
 pub mod auth;
 pub mod error;
 pub mod ipc;
+pub mod window_mgr;
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
