@@ -19,18 +19,22 @@ jobs:
             target: aarch64-apple-darwin
             tauri-platform: darwin-aarch64
             bundle-glob: "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Kryton.app.tar.gz"
+            upload-name: Kryton_aarch64.app.tar.gz
           - os: macos-latest
             target: x86_64-apple-darwin
             tauri-platform: darwin-x86_64
             bundle-glob: "src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Kryton.app.tar.gz"
+            upload-name: Kryton_x64.app.tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             tauri-platform: windows-x86_64
             bundle-glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Kryton_*_x64-setup.exe
+            upload-name: ""
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             tauri-platform: linux-x86_64
             bundle-glob: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/Kryton_*_amd64.AppImage
+            upload-name: ""
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -114,8 +118,14 @@ jobs:
           cp "$bundle" "$stage/bundle"
           cp "$sig" "$stage/signature"
           echo "${{ matrix.tauri-platform }}" > "$stage/platform"
-          basename "$bundle" > "$stage/filename"
-          echo "--- staged ---"
+          # The uploaded asset name may differ from the on-disk basename
+          # (tauri-action renames macOS .app.tar.gz to include the arch).
+          upload_name="${{ matrix.upload-name }}"
+          if [ -z "$upload_name" ]; then
+            upload_name=$(basename "$bundle")
+          fi
+          echo "$upload_name" > "$stage/filename"
+          echo "--- staged ($upload_name) ---"
           ls -la "$stage"
 
       - uses: actions/upload-artifact@v4
