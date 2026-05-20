@@ -96,3 +96,56 @@ fn store_password<R: Runtime>(app: &AppHandle<R>, id: &Uuid, password: &str) -> 
 fn read_password<R: Runtime>(app: &AppHandle<R>, id: &Uuid) -> AppResult<String> {
     crate::auth::keychain::read(app, id)
 }
+
+use crate::window_mgr;
+
+#[tauri::command]
+pub async fn open_server<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    account_id: Uuid,
+) -> AppResult<()> {
+    let acct = {
+        let f = state.accounts.lock().unwrap();
+        f.accounts
+            .iter()
+            .find(|a| a.id == account_id)
+            .cloned()
+            .ok_or_else(|| AppError::AccountNotFound(account_id.to_string()))?
+    };
+    window_mgr::open_or_focus(&app, &acct)?;
+    if let Some(w) = app.get_webview_window("login") {
+        let _ = w.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn switch_to<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    account_id: Uuid,
+) -> AppResult<()> {
+    let acct = {
+        let mut f = state.accounts.lock().unwrap();
+        crate::accounts::touch(&mut f, account_id);
+        f.default_active = Some(account_id);
+        f.accounts
+            .iter()
+            .find(|a| a.id == account_id)
+            .cloned()
+            .ok_or_else(|| AppError::AccountNotFound(account_id.to_string()))?
+    };
+    state.save()?;
+    window_mgr::open_or_focus(&app, &acct)?;
+    window_mgr::hide_all_except(&app, &account_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn close_server<R: Runtime>(
+    app: AppHandle<R>,
+    account_id: Uuid,
+) -> AppResult<()> {
+    window_mgr::close(&app, &account_id)
+}

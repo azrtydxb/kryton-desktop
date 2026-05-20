@@ -14,6 +14,9 @@ pub fn run() {
             ipc::login_and_add,
             ipc::silent_relogin,
             ipc::remove_account,
+            ipc::open_server,
+            ipc::switch_to,
+            ipc::close_server,
         ])
         .setup(|app| {
             let state = ipc::AppState::init(app.handle())?;

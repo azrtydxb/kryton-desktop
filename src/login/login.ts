@@ -1,4 +1,4 @@
-import { ipc } from "../shared/ipc";
+import { ipc, windows } from "../shared/ipc";
 
 const form = document.getElementById("login-form") as HTMLFormElement;
 const err = document.getElementById("error") as HTMLParagraphElement;
@@ -14,7 +14,6 @@ form.addEventListener("submit", async (e) => {
       username: String(data.get("username")),
       password: String(data.get("password")),
     });
-    // Phase 3 will open the server window here. For now: just show placeholder.
     await invokeOpenServer(acct.id);
   } catch (e: unknown) {
     err.textContent = String(e);
@@ -23,7 +22,5 @@ form.addEventListener("submit", async (e) => {
 });
 
 async function invokeOpenServer(_id: string) {
-  // Stub. Filled in in Phase 3.
-  document.body.innerHTML =
-    "<p>Account added. Phase 3 will open the server window here.</p>";
+  await windows.openServer(_id);
 }

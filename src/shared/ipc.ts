@@ -27,3 +27,9 @@ export const ipc = {
   removeAccount: (accountId: string) =>
     invoke<void>("remove_account", { accountId }),
 };
+
+export const windows = {
+  openServer: (accountId: string) => invoke<void>("open_server", { accountId }),
+  switchTo: (accountId: string) => invoke<void>("switch_to", { accountId }),
+  closeServer: (accountId: string) => invoke<void>("close_server", { accountId }),
+};
