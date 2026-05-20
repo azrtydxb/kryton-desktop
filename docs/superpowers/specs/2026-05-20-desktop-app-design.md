@@ -33,20 +33,18 @@ A cross-platform desktop client that wraps the existing Kryton web UI in a Tauri
 ### Process model
 
 ```
-┌─ Tauri main window ──────────────────────────┐
-│  [Native menu bar: File Edit View Servers …] │
-│ ┌──────────────────────────────────────────┐ │
-│ │  Active webview (one of N)               │ │
-│ │  → https://server-A.example.com          │ │
-│ │  cookies isolated per server             │ │
-│ └──────────────────────────────────────────┘ │
-└──────────────────────────────────────────────┘
-   + hidden webviews for other connected servers (kept warm)
+┌─ WebviewWindow for server A ───┐  ┌─ WebviewWindow for server B ───┐
+│ [Native menu bar]              │  │ [Native menu bar]              │
+│ → https://server-A.example.com │  │ → https://server-B.example.com │
+└────────────────────────────────┘  └────────────────────────────────┘
+   one WebviewWindow per connected server (one visible, others hidden)
    + tray icon (separate)
    + quick-capture window (separate, opened on demand)
+   + shell windows: login/add-server, settings (opened on demand)
 ```
 
-- One webview per connected server, each in its own webview storage partition. Switching shows/hides; no reload, instant.
+- One `WebviewWindow` per connected server, each with its own data directory so cookies/storage do not cross between servers. Tauri 2's stable single-webview-per-window API is used; multi-webview-per-window remains behind an `unstable` flag and is intentionally avoided.
+- Switching servers raises/focuses the target window and hides the previously-active one. Hidden windows are kept alive so the embedded web UI's scroll position and open editor tabs are preserved.
 - The Rust core owns: account list, keychain access, tray, global shortcuts, deep-link handler, updater, native notifications dispatch, IPC bridge to the shell frontend.
 - The shell frontend owns: login/add-server form, settings window, quick-capture window. These never render inside the server webview.
 - A small per-account notifier task (in the Rust core) subscribes to the server's notifications stream and emits OS notifications. If Kryton does not yet expose a notifications stream, v1 falls back to having the embedded web UI bridge in-app notifications to the Rust core via an injected IPC shim. This is the only injection into the web UI; it is non-visual.
@@ -57,7 +55,7 @@ A cross-platform desktop client that wraps the existing Kryton web UI in a Tauri
 |---|---|---|
 | `accounts` | Rust | CRUD on the account list (server URL, label, last-active). Persists to `accounts.json`. Secrets go to keychain, never to JSON. |
 | `auth` | Rust | Read/write keychain via `tauri-plugin-stronghold` (or `keyring` fallback). Silent login on launch via the server's password endpoint. |
-| `webview-mgr` | Rust | Spawn/show/hide webviews, route URL changes, manage per-account storage partitions. |
+| `window-mgr` | Rust | Spawn/show/hide one `WebviewWindow` per account, route URL changes, manage per-account data directories. |
 | `tray` | Rust | Tray icon and menu (new note, switch server, quit). |
 | `shortcuts` | Rust | Register and dispatch global shortcuts. |
 | `deep-link` | Rust | Parse `kryton://` URLs, prompt-to-add if host unknown, route to the matching webview. |
@@ -99,7 +97,7 @@ Passwords live only in the OS keychain via `tauri-plugin-stronghold`, with `keyr
 
 ### Webview storage
 
-Each webview uses a Tauri storage partition keyed by account `id` (e.g. `webview://account-<id>`), so cookies, localStorage, and IndexedDB do not cross between servers.
+Each per-server `WebviewWindow` is configured with its own `data_directory` (Tauri `WebviewWindowBuilder::data_directory`) under `<app_data_dir>/webview-data/<account-id>/`, so cookies, localStorage, and IndexedDB do not cross between servers.
 
 ### Update artifacts
 
@@ -121,7 +119,7 @@ Each webview uses a Tauri storage partition keyed by account `id` (e.g. `webview
 ### Switch server
 
 - Triggered by `View → Servers → <name>`, tray menu, or `Cmd+1..9` / `Ctrl+1..9`.
-- Rust core calls `webview-mgr.show(account_id)`. The previously-active webview is hidden but kept warm; its scroll position and open tabs are preserved.
+- Rust core calls `window-mgr.show(account_id)`: shows and focuses the target server's `WebviewWindow`, hides the previously-active one. Hidden windows stay alive so scroll position and open editor tabs are preserved.
 
 ### Quick-capture
 
@@ -154,11 +152,11 @@ Each webview uses a Tauri storage partition keyed by account `id` (e.g. `webview
 - **Updater signature mismatch** — abort the update, log it, surface to the user. Never auto-restart on a bad payload.
 - **Two app instances** — single-instance guard via `tauri-plugin-single-instance`. A second launch focuses the existing window and forwards any deep-link argv.
 - **OS notification permission denied** — degrade silently; surface a one-line warning in settings.
-- **Account removal** — destroy the webview, wipe the storage partition, delete the keychain entry, update `accounts.json` atomically.
+- **Account removal** — close the per-server window, wipe the account's `data_directory`, delete the keychain entry, update `accounts.json` atomically.
 
 ## 6. Testing
 
-- **Rust unit tests** for `accounts`, `auth`, `deep-link` parsing, and `webview-mgr` state transitions.
+- **Rust unit tests** for `accounts`, `auth`, `deep-link` parsing, and `window-mgr` state transitions (show/hide/close, focus tracking).
 - **Integration tests** (Tauri's test harness) for first-launch, switch-server, deep-link routing, and single-instance behavior. Run against a local `docker-compose` Kryton from the `kryton` repo.
 - **Manual smoke matrix** before each release on macOS, Windows, and Linux: add server, switch, quick-capture, global shortcut, deep link, tray, drag-drop, auto-update from the prior version.
 - **No E2E browser tests against the embedded web app** — that is the web project's responsibility.
@@ -173,7 +171,7 @@ kryton-desktop/
 │   ├── src/
 │   │   ├── accounts.rs
 │   │   ├── auth.rs
-│   │   ├── webview_mgr.rs
+│   │   ├── window_mgr.rs
 │   │   ├── tray.rs
 │   │   ├── shortcuts.rs
 │   │   ├── deep_link.rs
