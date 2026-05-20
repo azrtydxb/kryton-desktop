@@ -1,5 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { ipc, windows } from "../shared/ipc";
+
+listen<string>("update:available", async (ev) => {
+  if (confirm(`Update ${ev.payload} is available. Install and restart?`)) {
+    await invoke("apply_update");
+  }
+});
 
 async function render() {
   const accounts = await ipc.listAccounts();
