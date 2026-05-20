@@ -3,6 +3,7 @@ pub mod auth;
 pub mod error;
 pub mod ipc;
 pub mod menu;
+pub mod shortcuts;
 pub mod tray;
 pub mod window_mgr;
 
@@ -70,6 +71,7 @@ pub(crate) fn open_quick_capture_window<R: tauri::Runtime>(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             ipc::list_accounts,
             ipc::login_and_add,
@@ -128,6 +130,14 @@ pub fn run() {
 
             // Install system tray
             tray::install(&handle, &accounts_snapshot)?;
+
+            // Register global shortcut for quick capture
+            let accel = {
+                let st: tauri::State<'_, ipc::AppState> = handle.state();
+                let f = st.accounts.lock().unwrap();
+                f.settings.shortcut_quick_capture.clone()
+            };
+            shortcuts::register(&handle, &accel)?;
 
             let menu_handle = handle.clone();
             app.on_menu_event(move |_app, ev| {

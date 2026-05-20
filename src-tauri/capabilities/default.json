@@ -10,6 +10,7 @@
     "core:menu:default",
     "core:app:default",
     "core:tray:default",
+    "global-shortcut:default",
     "opener:default"
   ]
 }
