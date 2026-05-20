@@ -4,10 +4,11 @@ pub mod deep_link;
 pub mod error;
 pub mod ipc;
 pub mod menu;
+pub mod notifier;
 pub mod shortcuts;
 pub mod tray;
+pub mod updater;
 pub mod window_mgr;
-pub mod notifier;
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -80,6 +81,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             ipc::list_accounts,
             ipc::login_and_add,
@@ -92,6 +94,7 @@ pub fn run() {
             ipc::open_add_server,
             ipc::capture_to_active,
             ipc::notify_from_web,
+            updater::apply_update,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -160,6 +163,16 @@ pub fn run() {
             });
             // Process any kryton:// URL passed via argv at launch
             deep_link::handle_argv(&handle, &std::env::args().collect::<Vec<_>>());
+
+            // Spawn periodic update check (immediate + every 24 h)
+            let h = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                updater::check_and_prompt(h.clone()).await;
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(24 * 60 * 60)).await;
+                    updater::check_and_prompt(h.clone()).await;
+                }
+            });
 
             let menu_handle = handle.clone();
             app.on_menu_event(move |_app, ev| {
