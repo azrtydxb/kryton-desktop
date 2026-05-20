@@ -13,7 +13,7 @@ pub struct Account {
     pub last_active: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default = "default_shortcut")]
     pub shortcut_quick_capture: String,
@@ -21,6 +21,16 @@ pub struct Settings {
     pub launch_at_login: bool,
     #[serde(default = "default_channel")]
     pub auto_update_channel: String,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            shortcut_quick_capture: default_shortcut(),
+            launch_at_login: false,
+            auto_update_channel: default_channel(),
+        }
+    }
 }
 
 fn default_shortcut() -> String {
