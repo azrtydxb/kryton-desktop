@@ -34,7 +34,7 @@ impl AppState {
         accounts::save(&self.file_path, &f)
     }
 
-    fn auth_for(&self, id: Uuid) -> AppResult<AuthClient> {
+    pub fn auth_for(&self, id: Uuid) -> AppResult<AuthClient> {
         let mut clients = self.auth_clients.lock().unwrap();
         if let Some(c) = clients.get(&id) {
             return Ok(c.clone());

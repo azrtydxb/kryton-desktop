@@ -32,13 +32,14 @@ thiserror = "1"
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "cookies"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "cookies", "stream"] }
 tokio = { version = "1", features = ["sync", "rt-multi-thread", "macros"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 keyring = "3"
 aes-gcm = "0.10"
 rand = "0.8"
+futures-util = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

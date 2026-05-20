@@ -206,8 +206,36 @@ kryton-desktop/
 - Linux: no signing required; AppImage and `.deb` produced.
 - Tauri updater: Ed25519 signing key.
 
-## 8. Open Questions Deferred to Implementation
+## 8. Notification Architecture
 
-- Exact name and shape of the Kryton notifications endpoint (if and when added). Until then, the v1 notifier uses the IPC shim fallback described in §2.
+**Decided 2026-05-20** — long-term, the desktop subscribes to a server-side notifications stream and emits OS notifications from the Rust core. The injected `window.__kryton_desktop.notify(title, body)` shim is kept as a transitional path for ad-hoc UI events that don't have a server-side equivalent.
+
+### Server-side contract (proposed; not yet implemented in `kryton`)
+
+`GET /api/notifications/stream` — Server-Sent Events. Authenticated by the same session cookie as the rest of the API. Each event is a single JSON object:
+
+```json
+{
+  "id": "string",
+  "kind": "share-invite|mention|deadline|custom",
+  "title": "string",
+  "body": "string",
+  "createdAt": "RFC3339 timestamp"
+}
+```
+
+The desktop subscribes once per connected account after `silent_relogin` succeeds. On `200 OK` it parses events and calls `notifier::notify(...)`. On `404` (endpoint not yet shipped on the user's server) it logs once and exits silently — no retries, no errors surfaced to the user.
+
+### Why a stream rather than polling
+
+Polling adds 1 request per account per poll interval; many users will run with 1–3 accounts forever. SSE is "1 long-lived connection per account" and lets the server push at most one event per real notification. better-auth's session cookie already authenticates the stream; no new auth code required.
+
+### Why we still keep the IPC shim
+
+Some notifications are purely client-side (e.g. "your draft was saved offline"). The shim lets the web UI fire those without a server round-trip. Long-term we may remove it; for v1 both paths coexist.
+
+## 9. Open Questions Deferred to Implementation
+
+- The notifications-stream endpoint described in §8 must be added to the Kryton server before the SSE subscriber does anything useful. The desktop ships the subscriber as a stub today.
 - Exact path of the daily-note append endpoint used by quick-capture: confirmed against the server's current API at implementation time.
 - Whether to ship a `.deb` in addition to `.AppImage` for Linux at v1, or defer `.deb` to v1.x.

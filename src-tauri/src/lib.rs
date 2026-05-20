@@ -122,9 +122,17 @@ pub fn run() {
                 for a in &accounts {
                     let h = handle.clone();
                     let aid = a.id;
+                    let server_url = a.server_url.clone();
                     tauri::async_runtime::spawn(async move {
-                        if let Err(e) = ipc::do_silent_relogin(h, aid).await {
+                        if let Err(e) = ipc::do_silent_relogin(h.clone(), aid).await {
                             tracing::warn!("silent relogin failed for {aid}: {e}");
+                            return;
+                        }
+                        let st: tauri::State<'_, ipc::AppState> = h.state();
+                        if let Ok(client) = st.auth_for(aid) {
+                            tauri::async_runtime::spawn(notifier::subscribe(
+                                h, aid, server_url, client,
+                            ));
                         }
                     });
                 }
