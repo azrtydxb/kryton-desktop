@@ -1,16 +1,27 @@
 <!doctype html>
 <html lang="en">
-  <head><meta charset="UTF-8"/><title>Quick Capture</title>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Quick Capture</title>
     <link rel="stylesheet" href="../shared/styles.css" />
   </head>
   <body>
-    <form id="capture">
-      <textarea name="body" rows="6" placeholder="Append to today's daily note…" autofocus></textarea>
-      <div class="row">
-        <button type="submit">Save</button>
-        <span id="status"></span>
-      </div>
-    </form>
+    <main class="capture-page">
+      <p class="eyebrow">// capture · today's daily note</p>
+      <form id="capture" style="display: contents;">
+        <textarea
+          class="textarea"
+          name="body"
+          rows="6"
+          placeholder="What's on your mind?"
+          autofocus
+        ></textarea>
+        <div class="capture-actions">
+          <button class="btn btn-primary" type="submit">Save</button>
+          <span class="status" id="status"></span>
+        </div>
+      </form>
+    </main>
     <script type="module" src="./quick-capture.ts"></script>
   </body>
 </html>

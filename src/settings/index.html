@@ -1,16 +1,32 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" /><title>Kryton — Settings</title>
+    <meta charset="UTF-8" />
+    <title>Kryton — Settings</title>
     <link rel="stylesheet" href="../shared/styles.css" />
   </head>
   <body>
-    <main id="root">
-      <h1>Settings</h1>
-      <section>
-        <h2>Accounts</h2>
-        <ul id="accounts"></ul>
-        <button id="add">Add server…</button>
+    <main class="shell-page">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <circle cx="7" cy="8" r="2" fill="currentColor"/>
+            <circle cx="17" cy="8" r="2" fill="currentColor"/>
+            <circle cx="12" cy="17" r="2" fill="currentColor"/>
+            <path d="M7 8 L17 8 M7 8 L12 17 M17 8 L12 17" stroke="currentColor" stroke-width="1.2" opacity="0.7"/>
+          </svg>
+        </span>
+        <span class="brand-name">kryton</span>
+      </div>
+
+      <section class="card" style="max-width: 520px;">
+        <p class="eyebrow">// settings</p>
+        <h1 class="title">Accounts</h1>
+
+        <div class="section">
+          <ul id="accounts" class="account-list"></ul>
+          <button id="add" class="btn">+ Add server</button>
+        </div>
       </section>
     </main>
     <script type="module" src="./settings.ts"></script>

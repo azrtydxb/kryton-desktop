@@ -8,17 +8,34 @@ listen<string>("update:available", async (ev) => {
   }
 });
 
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
+  );
+}
+
 async function render() {
   const accounts = await ipc.listAccounts();
   const ul = document.getElementById("accounts") as HTMLUListElement;
   ul.innerHTML = "";
+  if (accounts.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "account-row";
+    empty.style.gridTemplateColumns = "1fr";
+    empty.innerHTML = `<span class="meta">No servers yet. Add one to get started.</span>`;
+    ul.appendChild(empty);
+    return;
+  }
   for (const a of accounts) {
     const li = document.createElement("li");
+    li.className = "account-row";
     li.innerHTML = `
-      <strong>${a.label}</strong>
-      <small>${a.server_url} — ${a.username}</small>
-      <button data-act="switch">Switch to</button>
-      <button data-act="remove">Remove</button>
+      <div>
+        <span class="label">${esc(a.label)}</span>
+        <span class="meta">${esc(a.server_url)} · ${esc(a.username)}</span>
+      </div>
+      <button class="btn" data-act="switch">Switch to</button>
+      <button class="btn btn-danger" data-act="remove">Remove</button>
     `;
     li.querySelector('[data-act="switch"]')!.addEventListener("click", async () => {
       await windows.switchTo(a.id);
