@@ -2,6 +2,7 @@ use crate::accounts::{self, Account, AccountsFile};
 use crate::auth::AuthClient;
 use crate::error::{AppError, AppResult};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
@@ -10,7 +11,7 @@ use uuid::Uuid;
 pub struct AppState {
     pub file_path: PathBuf,
     pub accounts: Mutex<AccountsFile>,
-    pub auth: AuthClient,
+    pub auth_clients: Mutex<HashMap<Uuid, AuthClient>>,
 }
 
 impl AppState {
@@ -24,13 +25,23 @@ impl AppState {
         Ok(Self {
             file_path,
             accounts: Mutex::new(file),
-            auth: AuthClient::new()?,
+            auth_clients: Mutex::new(HashMap::new()),
         })
     }
 
     pub fn save(&self) -> AppResult<()> {
         let f = self.accounts.lock().unwrap();
         accounts::save(&self.file_path, &f)
+    }
+
+    fn auth_for(&self, id: Uuid) -> AppResult<AuthClient> {
+        let mut clients = self.auth_clients.lock().unwrap();
+        if let Some(c) = clients.get(&id) {
+            return Ok(c.clone());
+        }
+        let c = AuthClient::new()?;
+        clients.insert(id, c.clone());
+        Ok(c)
     }
 }
 
@@ -48,11 +59,17 @@ pub async fn login_and_add<R: Runtime>(
     username: String,
     password: String,
 ) -> AppResult<Account> {
-    state.auth.login(&server_url, &username, &password).await?;
     let acct = {
         let mut f = state.accounts.lock().unwrap();
-        accounts::add(&mut f, label, server_url, username)
+        accounts::add(&mut f, label, server_url.clone(), username.clone())
     };
+    let client = state.auth_for(acct.id)?;
+    if let Err(e) = client.login(&server_url, &username, &password).await {
+        // Rollback the just-added account.
+        let mut f = state.accounts.lock().unwrap();
+        let _ = accounts::remove(&mut f, acct.id);
+        return Err(e);
+    }
     state.save()?;
     store_password(&app, &acct.id, &password)?;
     Ok(acct)
@@ -74,7 +91,7 @@ pub async fn silent_relogin<R: Runtime>(
     };
     let password = read_password(&app, &acct.id)?;
     state
-        .auth
+        .auth_for(account_id)?
         .login(&acct.server_url, &acct.username, &password)
         .await?;
     Ok(())
@@ -135,7 +152,7 @@ pub async fn do_silent_relogin<R: Runtime>(app: AppHandle<R>, id: Uuid) -> AppRe
     };
     let password = read_password(&app, &acct.id)?;
     app_state
-        .auth
+        .auth_for(id)?
         .login(&acct.server_url, &acct.username, &password)
         .await?;
     Ok(())
@@ -167,7 +184,7 @@ pub async fn capture_to_active<R: Runtime>(
             .ok_or_else(|| AppError::AccountNotFound(id.to_string()))?
     };
     let base = acct.server_url.trim_end_matches('/');
-    let http = state.auth.http();
+    let http = state.auth_for(acct.id)?.http().clone();
 
     let daily: DailyNote = http
         .post(format!("{base}{DAILY_PATH}"))

@@ -22,6 +22,7 @@ pub struct LoginUser {
     pub name: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct AuthClient {
     http: Client,
 }
