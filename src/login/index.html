@@ -7,8 +7,15 @@
   </head>
   <body>
     <main id="root">
-      <h1>Kryton</h1>
-      <p>Loading…</p>
+      <h1>Add a Kryton server</h1>
+      <form id="login-form">
+        <label>Label<input name="label" required placeholder="Home" /></label>
+        <label>Server URL<input name="serverUrl" required type="url" placeholder="https://kryton.example.com" /></label>
+        <label>Username<input name="username" required /></label>
+        <label>Password<input name="password" required type="password" /></label>
+        <button type="submit">Add</button>
+        <p class="error" id="error" hidden></p>
+      </form>
     </main>
     <script type="module" src="./login.ts"></script>
   </body>
