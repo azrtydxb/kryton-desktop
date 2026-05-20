@@ -7,6 +7,7 @@ pub mod menu;
 pub mod shortcuts;
 pub mod tray;
 pub mod window_mgr;
+pub mod notifier;
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -78,6 +79,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             ipc::list_accounts,
             ipc::login_and_add,
@@ -89,6 +91,7 @@ pub fn run() {
             ipc::refresh_menu,
             ipc::open_add_server,
             ipc::capture_to_active,
+            ipc::notify_from_web,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

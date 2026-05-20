@@ -31,6 +31,17 @@ pub fn open_or_focus<R: Runtime>(app: &AppHandle<R>, acct: &Account) -> AppResul
         .title(format!("Kryton — {}", acct.label))
         .inner_size(1200.0, 800.0)
         .data_directory(dir)
+        .initialization_script(
+            r#"
+        window.__kryton_desktop = {
+          notify: (title, body) => {
+            if (window.__TAURI__ && window.__TAURI__.core) {
+              return window.__TAURI__.core.invoke('notify_from_web', { title, body });
+            }
+          }
+        };
+    "#,
+        )
         .build()
         .map_err(|e| AppError::Invalid(e.to_string()))?;
     Ok(())

@@ -247,3 +247,10 @@ pub async fn close_server<R: Runtime>(
 ) -> AppResult<()> {
     window_mgr::close(&app, &account_id)
 }
+
+use crate::notifier::{notify, NotifyArgs};
+
+#[tauri::command]
+pub fn notify_from_web<R: Runtime>(app: AppHandle<R>, args: NotifyArgs) -> AppResult<()> {
+    notify(&app, args)
+}
