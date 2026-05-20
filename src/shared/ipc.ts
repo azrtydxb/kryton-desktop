@@ -34,3 +34,7 @@ export const windows = {
   switchTo: (accountId: string) => invoke<void>("switch_to", { accountId }),
   closeServer: (accountId: string) => invoke<void>("close_server", { accountId }),
 };
+
+export const capture = {
+  toActive: (markdown: string) => invoke<void>("capture_to_active", { markdown }),
+};

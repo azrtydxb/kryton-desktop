@@ -82,6 +82,7 @@ pub fn run() {
             ipc::close_server,
             ipc::refresh_menu,
             ipc::open_add_server,
+            ipc::capture_to_active,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

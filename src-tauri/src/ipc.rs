@@ -1,9 +1,10 @@
 use crate::accounts::{self, Account, AccountsFile};
 use crate::auth::AuthClient;
 use crate::error::{AppError, AppResult};
+use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use uuid::Uuid;
 
 pub struct AppState {
@@ -137,6 +138,60 @@ pub async fn do_silent_relogin<R: Runtime>(app: AppHandle<R>, id: Uuid) -> AppRe
         .auth
         .login(&acct.server_url, &acct.username, &password)
         .await?;
+    Ok(())
+}
+
+const DAILY_PATH: &str = "/api/daily";
+
+#[derive(Deserialize)]
+struct DailyNote {
+    path: String,
+    content: String,
+}
+
+#[tauri::command]
+pub async fn capture_to_active<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    markdown: String,
+) -> AppResult<()> {
+    let acct = {
+        let f = state.accounts.lock().unwrap();
+        let id = f
+            .default_active
+            .ok_or_else(|| AppError::Invalid("no active server".into()))?;
+        f.accounts
+            .iter()
+            .find(|a| a.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::AccountNotFound(id.to_string()))?
+    };
+    let base = acct.server_url.trim_end_matches('/');
+    let http = state.auth.http();
+
+    let daily: DailyNote = http
+        .post(format!("{base}{DAILY_PATH}"))
+        .header("content-type", "application/json")
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+
+    let new_content = if daily.content.is_empty() {
+        markdown
+    } else {
+        format!("{}\n\n{}", daily.content.trim_end_matches('\n'), markdown)
+    };
+
+    let put_url = format!("{base}/api/notes/{}", daily.path);
+    http.put(&put_url)
+        .json(&serde_json::json!({"content": new_content}))
+        .send()
+        .await?
+        .error_for_status()?;
+
+    let _ = app.emit("capture:saved", acct.id.to_string());
     Ok(())
 }
 

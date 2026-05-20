@@ -1,3 +1,16 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"/><title>Kryton — Quick Capture</title></head>
-<body><main id="root">Quick Capture</main><script type="module" src="./quick-capture.ts"></script></body></html>
+<html lang="en">
+  <head><meta charset="UTF-8"/><title>Quick Capture</title>
+    <link rel="stylesheet" href="../shared/styles.css" />
+  </head>
+  <body>
+    <form id="capture">
+      <textarea name="body" rows="6" placeholder="Append to today's daily note…" autofocus></textarea>
+      <div class="row">
+        <button type="submit">Save</button>
+        <span id="status"></span>
+      </div>
+    </form>
+    <script type="module" src="./quick-capture.ts"></script>
+  </body>
+</html>

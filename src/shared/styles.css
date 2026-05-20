@@ -7,3 +7,6 @@ form input { padding: 0.5rem; font-size: 1rem; border: 1px solid #ccc; border-ra
 form button { padding: 0.6rem; font-size: 1rem; cursor: pointer; }
 .error { color: #b00020; margin: 0; }
 h1 { margin-top: 0; }
+textarea { width: 100%; resize: vertical; font: inherit; padding: 0.5rem; }
+.row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+#status { font-size: 0.85rem; color: #666; }

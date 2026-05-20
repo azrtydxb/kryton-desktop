@@ -32,6 +32,10 @@ impl AuthClient {
         Ok(Self { http })
     }
 
+    pub fn http(&self) -> &Client {
+        &self.http
+    }
+
     pub async fn login(
         &self,
         server_url: &str,
