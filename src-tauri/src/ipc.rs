@@ -103,9 +103,15 @@ pub fn remove_account<R: Runtime>(
     state: State<'_, AppState>,
     account_id: Uuid,
 ) -> AppResult<()> {
+    // Close the per-server window first so the OS releases data-dir file handles.
+    let _ = crate::window_mgr::close(&app, &account_id);
     {
         let mut f = state.accounts.lock().unwrap();
         accounts::remove(&mut f, account_id)?;
+    }
+    {
+        let mut clients = state.auth_clients.lock().unwrap();
+        clients.remove(&account_id);
     }
     state.save()?;
     let _ = crate::auth::keychain::delete(&app, &account_id);
