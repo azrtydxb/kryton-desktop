@@ -1,3 +1,5 @@
+pub mod error;
+
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
