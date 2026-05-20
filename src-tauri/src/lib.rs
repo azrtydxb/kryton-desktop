@@ -3,6 +3,7 @@ pub mod auth;
 pub mod error;
 pub mod ipc;
 pub mod menu;
+pub mod tray;
 pub mod window_mgr;
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -124,6 +125,9 @@ pub fn run() {
             };
             let menu = menu::build(&handle, &accounts_snapshot)?;
             app.set_menu(menu)?;
+
+            // Install system tray
+            tray::install(&handle, &accounts_snapshot)?;
 
             let menu_handle = handle.clone();
             app.on_menu_event(move |_app, ev| {

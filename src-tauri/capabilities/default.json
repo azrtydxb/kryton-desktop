@@ -9,6 +9,7 @@
     "core:webview:default",
     "core:menu:default",
     "core:app:default",
+    "core:tray:default",
     "opener:default"
   ]
 }

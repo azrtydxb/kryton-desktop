@@ -103,6 +103,7 @@ pub fn refresh_menu<R: Runtime>(app: AppHandle<R>, state: State<'_, AppState>) -
     let menu = crate::menu::build(&app, &accounts)
         .map_err(|e| AppError::Invalid(e.to_string()))?;
     app.set_menu(menu).map_err(|e| AppError::Invalid(e.to_string()))?;
+    let _ = crate::tray::refresh(&app, &accounts);
     Ok(())
 }
 
