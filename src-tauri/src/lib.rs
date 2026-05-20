@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod error;
 
 use tauri::{WebviewUrl, WebviewWindowBuilder};
