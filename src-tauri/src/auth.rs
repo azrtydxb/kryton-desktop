@@ -81,7 +81,17 @@ pub mod keychain {
 
     #[cfg(not(debug_assertions))]
     mod backend {
+        //! Release-build credential store: OS-native keychain via the
+        //! `keyring` 4.x crate (macOS Keychain, Windows Credential Manager,
+        //! Linux Secret Service).
+        //!
+        //! `keyring` 4 splits the backend selection (in `keyring`) from the
+        //! `Entry` API (in `keyring_core`). The platform-native store must
+        //! be activated once at startup; without it the default is an
+        //! in-memory sample store whose entries vanish on process exit.
         use super::*;
+        use keyring_core::Entry;
+        use std::sync::Once;
 
         const SERVICE: &str = "app.kryton.desktop";
 
@@ -89,28 +99,39 @@ pub mod keychain {
             id.to_string()
         }
 
-        pub fn store<R: Runtime>(_app: &AppHandle<R>, id: &Uuid, password: &str) -> AppResult<()> {
-            tracing::info!("keychain::store service={SERVICE} account={id} len={}", password.len());
-            let entry = keyring::Entry::new(SERVICE, &account(id)).map_err(|e| {
-                tracing::warn!("keychain::store new failed: {e}");
-                AppError::Keychain(e.to_string())
-            })?;
-            entry.set_password(password).map_err(|e| {
-                tracing::warn!("keychain::store set_password failed: {e}");
-                AppError::Keychain(e.to_string())
-            })?;
-            // Immediately read it back to verify it actually landed.
-            match entry.get_password() {
-                Ok(p) if p == password => tracing::info!("keychain::store verified ({} bytes)", p.len()),
-                Ok(p) => tracing::warn!("keychain::store readback mismatch ({} bytes vs {} expected)", p.len(), password.len()),
-                Err(e) => tracing::warn!("keychain::store readback failed: {e}"),
+        fn ensure_native_store() -> AppResult<()> {
+            static INIT: Once = Once::new();
+            static mut INIT_RESULT: Result<(), String> = Ok(());
+            INIT.call_once(|| {
+                // `not_keyutils = true` so Linux uses Secret Service (more
+                // compatible with desktop sessions) instead of kernel keyutils.
+                let result = keyring::use_native_store(true).map_err(|e| e.to_string());
+                if let Err(ref e) = result {
+                    tracing::error!("keyring::use_native_store failed: {e}");
+                }
+                // SAFETY: only written inside Once::call_once; readers below
+                // happen-before the write via the Once barrier.
+                unsafe { INIT_RESULT = result; }
+            });
+            // SAFETY: written exactly once via Once; subsequent reads are safe.
+            unsafe {
+                #[allow(static_mut_refs)]
+                INIT_RESULT.clone().map_err(AppError::Keychain)
             }
-            Ok(())
+        }
+
+        pub fn store<R: Runtime>(_app: &AppHandle<R>, id: &Uuid, password: &str) -> AppResult<()> {
+            ensure_native_store()?;
+            let entry = Entry::new(SERVICE, &account(id))
+                .map_err(|e| AppError::Keychain(e.to_string()))?;
+            entry
+                .set_password(password)
+                .map_err(|e| AppError::Keychain(e.to_string()))
         }
 
         pub fn read<R: Runtime>(_app: &AppHandle<R>, id: &Uuid) -> AppResult<String> {
-            tracing::debug!("keychain::read service={SERVICE} account={id}");
-            let entry = keyring::Entry::new(SERVICE, &account(id))
+            ensure_native_store()?;
+            let entry = Entry::new(SERVICE, &account(id))
                 .map_err(|e| AppError::Keychain(e.to_string()))?;
             entry
                 .get_password()
@@ -118,11 +139,12 @@ pub mod keychain {
         }
 
         pub fn delete<R: Runtime>(_app: &AppHandle<R>, id: &Uuid) -> AppResult<()> {
-            let entry = keyring::Entry::new(SERVICE, &account(id))
+            ensure_native_store()?;
+            let entry = Entry::new(SERVICE, &account(id))
                 .map_err(|e| AppError::Keychain(e.to_string()))?;
             match entry.delete_credential() {
                 Ok(()) => Ok(()),
-                Err(keyring::Error::NoEntry) => Ok(()),
+                Err(keyring_core::Error::NoEntry) => Ok(()),
                 Err(e) => Err(AppError::Keychain(e.to_string())),
             }
         }

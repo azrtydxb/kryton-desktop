@@ -37,7 +37,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tokio = { version = "1", features = ["sync", "rt-multi-thread", "macros"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-keyring = "3"
+keyring = "4"
+keyring-core = "1"
 aes-gcm = "0.10"
 rand = "0.8"
 futures-util = "0.3"
