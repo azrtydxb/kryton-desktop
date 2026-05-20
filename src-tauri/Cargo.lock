@@ -1864,7 +1864,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kryton-desktop-tmp"
+name = "kryton-desktop"
 version = "0.1.0"
 dependencies = [
  "serde",
