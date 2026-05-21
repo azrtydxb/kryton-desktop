@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main", "login", "settings", "quick-capture", "server-*"],
+  "description": "Shell windows: login, settings, quick-capture, plus the legacy 'main' label. These are our own Vite-built pages and may invoke any Tauri plugin we register.",
+  "windows": ["main", "login", "settings", "quick-capture"],
   "permissions": [
     "core:default",
     "core:window:default",

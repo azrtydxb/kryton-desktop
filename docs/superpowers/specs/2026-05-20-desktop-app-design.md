@@ -208,7 +208,7 @@ kryton-desktop/
 
 ## 8. Notification Architecture
 
-**Decided 2026-05-20** — long-term, the desktop subscribes to a server-side notifications stream and emits OS notifications from the Rust core. The injected `window.__kryton_desktop.notify(title, body)` shim is kept as a transitional path for ad-hoc UI events that don't have a server-side equivalent.
+**Decided 2026-05-21** — notifications are pushed from the Kryton server, never fired by the embedded web app calling into the host. The integration contract is documented separately at [docs/integration/desktop-bridge.md](../../integration/desktop-bridge.md).
 
 ### Server-side contract (proposed; not yet implemented in `kryton`)
 
@@ -226,13 +226,15 @@ kryton-desktop/
 
 The desktop subscribes once per connected account after `silent_relogin` succeeds. On `200 OK` it parses events and calls `notifier::notify(...)`. On `404` (endpoint not yet shipped on the user's server) it logs once and exits silently — no retries, no errors surfaced to the user.
 
-### Why a stream rather than polling
+### Why a server-driven stream
 
-Polling adds 1 request per account per poll interval; many users will run with 1–3 accounts forever. SSE is "1 long-lived connection per account" and lets the server push at most one event per real notification. better-auth's session cookie already authenticates the stream; no new auth code required.
+- The Kryton web app is the source of truth for the UI. Notifications it would fire from the client (e.g. "your draft saved") are intrinsically client-side and can use in-app toasts; they don't need an OS-level notification.
+- Notifications that matter at the OS level (mentions, share invites, deadlines) are events the server already knows about. Pushing them directly removes a round-trip and the need for a host-side IPC shim.
+- SSE is "1 long-lived connection per account" — better than polling. better-auth's session cookie already authenticates the stream; no new auth code required.
 
-### Why we still keep the IPC shim
+### Why we do NOT expose Tauri to the embedded web app
 
-Some notifications are purely client-side (e.g. "your draft was saved offline"). The shim lets the web UI fire those without a server round-trip. Long-term we may remove it; for v1 both paths coexist.
+The `server-*` capability scope grants zero plugin permissions and `withGlobalTauri` is `false`. The embedded Kryton web app sees no Tauri internals and cannot fire host-side APIs. The single, narrow bridge is `window.__kryton_desktop` (see [bridge contract](../../integration/desktop-bridge.md)), which today exposes only `accountId` and `version` — additive members will be considered as use cases arise.
 
 ## 9. Open Questions Deferred to Implementation
 

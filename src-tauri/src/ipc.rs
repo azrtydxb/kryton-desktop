@@ -291,31 +291,9 @@ pub async fn close_server<R: Runtime>(
     window_mgr::close(&app, &account_id)
 }
 
-use crate::notifier::{notify, NotifyArgs};
-
-#[derive(serde::Serialize)]
-pub struct WebviewCreds {
-    pub email: String,
-    pub password: String,
-}
-
-#[tauri::command]
-pub fn webview_creds<R: Runtime>(
-    app: AppHandle<R>,
-    state: State<'_, AppState>,
-    account_id: Uuid,
-) -> AppResult<WebviewCreds> {
-    let username = {
-        let f = state.accounts.lock().unwrap();
-        f.accounts.iter().find(|a| a.id == account_id).cloned()
-            .ok_or_else(|| AppError::AccountNotFound(account_id.to_string()))?
-            .username
-    };
-    let password = crate::auth::keychain::read(&app, &account_id)?;
-    Ok(WebviewCreds { email: username, password })
-}
-
-#[tauri::command]
-pub fn notify_from_web<R: Runtime>(app: AppHandle<R>, args: NotifyArgs) -> AppResult<()> {
-    notify(&app, args)
-}
+// Notifications come from the server-pushed SSE stream (see notifier::subscribe).
+// We deliberately do NOT expose an IPC command for the embedded web UI to fire
+// OS notifications: the `server-*` capability scope grants zero plugin
+// permissions, so the embedded Kryton web app cannot reach into the host. Any
+// future host-side capability the web app needs goes through the documented
+// `window.__kryton_desktop` bridge (see docs/integration/desktop-bridge.md).

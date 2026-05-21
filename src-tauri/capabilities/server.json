@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "server",
+  "description": "Per-Kryton-server webviews (label pattern: 'server-*'). These load the remote Kryton web UI over HTTPS and must NOT be granted access to any Tauri plugin. The web app talks to the host only through the injected window.__kryton_desktop bridge (see docs/integration/desktop-bridge.md).",
+  "windows": ["server-*"],
+  "permissions": []
+}

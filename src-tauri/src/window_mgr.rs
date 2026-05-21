@@ -35,16 +35,20 @@ pub fn open_or_focus<R: Runtime>(app: &AppHandle<R>, acct: &Account) -> AppResul
         .unwrap_or_else(|_| "null".into()),
         Err(_) => "null".into(),
     };
+    let pkg_version = env!("CARGO_PKG_VERSION");
     let init_script = format!(
         r#"
-        window.__kryton_desktop = {{
-          accountId: "{account_id}",
-          notify: (title, body) => {{
-            if (window.__TAURI__ && window.__TAURI__.core) {{
-              return window.__TAURI__.core.invoke('notify_from_web', {{ title, body }});
-            }}
-          }}
-        }};
+        // Kryton Desktop bridge. Documented contract for the embedded Kryton
+        // web app to detect the host and (in future) call host capabilities.
+        // See https://github.com/azrtydxb/kryton-desktop/blob/main/docs/integration/desktop-bridge.md
+        Object.defineProperty(window, "__kryton_desktop", {{
+          value: Object.freeze({{
+            accountId: "{account_id}",
+            version: "{pkg_version}",
+          }}),
+          writable: false,
+          configurable: false,
+        }});
         (() => {{
           function showBanner(text) {{
             const ensure = () => {{
@@ -76,7 +80,6 @@ pub fn open_or_focus<R: Runtime>(app: &AppHandle<R>, acct: &Account) -> AppResul
             }};
             ensure();
           }}
-          window.__kryton_desktop.showBanner = showBanner;
           (async () => {{
             if (window.__kryton_relogin_attempted) return;
             window.__kryton_relogin_attempted = true;

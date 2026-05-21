@@ -94,8 +94,6 @@ pub fn run() {
             ipc::refresh_menu,
             ipc::open_add_server,
             ipc::capture_to_active,
-            ipc::notify_from_web,
-            ipc::webview_creds,
             ipc::get_theme,
             ipc::set_theme,
             updater::apply_update,
