@@ -192,7 +192,7 @@ pub mod keychain {
                 return Ok(out);
             }
             let mut key = [0u8; 32];
-            rand::thread_rng().fill_bytes(&mut key);
+            rand::rng().fill_bytes(&mut key);
             std::fs::write(&path, key)?;
             #[cfg(unix)]
             {
@@ -218,8 +218,10 @@ pub mod keychain {
             let key = read_or_create_key(app)?;
             let cipher = Aes256Gcm::new_from_slice(&key)
                 .map_err(|e| AppError::Keychain(e.to_string()))?;
+            let nonce = Nonce::try_from(nonce_bytes)
+                .map_err(|_| AppError::Keychain("invalid nonce length".into()))?;
             let plaintext = cipher
-                .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
+                .decrypt(&nonce, ciphertext)
                 .map_err(|e| AppError::Keychain(format!("decrypt: {e}")))?;
             Ok(serde_json::from_slice(&plaintext).unwrap_or_default())
         }
@@ -232,10 +234,11 @@ pub mod keychain {
             let cipher = Aes256Gcm::new_from_slice(&key)
                 .map_err(|e| AppError::Keychain(e.to_string()))?;
             let mut nonce_bytes = [0u8; 12];
-            rand::thread_rng().fill_bytes(&mut nonce_bytes);
+            rand::rng().fill_bytes(&mut nonce_bytes);
+            let nonce = Nonce::from(nonce_bytes);
             let plaintext = serde_json::to_vec(map)?;
             let ciphertext = cipher
-                .encrypt(Nonce::from_slice(&nonce_bytes), plaintext.as_ref())
+                .encrypt(&nonce, plaintext.as_ref())
                 .map_err(|e| AppError::Keychain(format!("encrypt: {e}")))?;
             let mut blob = nonce_bytes.to_vec();
             blob.extend_from_slice(&ciphertext);
