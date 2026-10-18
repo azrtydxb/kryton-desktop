@@ -3,14 +3,22 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  # Nightly tier runs the same linux unit; the windows/macos matrix is
+  # release-only (v* tag or manual dispatch) so PRs stay under 5 minutes.
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch: {}
 
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        # Linux unit stays on every PR/push (and is the required
+        # "build (ubuntu-latest)" check); the full OS matrix is release-only.
+        os: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && fromJSON('["macos-latest","windows-latest","ubuntu-latest"]') || fromJSON('["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
